@@ -26,10 +26,11 @@ backend/
 
 ### Prerequisites
 
-- Python 3.8+
+- Python 3.8+ (via Conda)
 - Java 17 (JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64)
 - Apache Spark 3.5.7 (SPARK_HOME=/home/student/spark-3.5.7-bin-hadoop3)
 - Access to HDFS cluster (hdfs://node1:9000)
+- Conda environment (base)
 
 ### Setup
 
@@ -38,11 +39,15 @@ backend/
 cd /home/student/energy-platform/backend
 ```
 
-2. Create virtual environment and install dependencies:
+2. Activate conda base environment and install dependencies:
 ```bash
-python3 -m venv venv
-source venv/bin/activate
+conda activate base
 pip install -r requirements.txt
+```
+
+Or use Tsinghua mirror for faster download:
+```bash
+pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
 ```
 
 ## Running the API Server

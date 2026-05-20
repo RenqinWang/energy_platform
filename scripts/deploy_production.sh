@@ -166,16 +166,17 @@ step5_start_backend() {
 
     cd $PROJECT_HOME/backend
 
-    log_info "检查Python虚拟环境..."
-    if [ ! -d "venv" ]; then
-        log_info "创建虚拟环境..."
-        python3 -m venv venv
+    log_info "激活Conda base环境..."
+    eval "$(conda shell.bash hook)"
+    conda activate base
 
+    log_info "检查依赖是否已安装..."
+    if python -c "import fastapi, uvicorn, pyspark" 2>/dev/null; then
+        log_success "依赖已安装，跳过安装步骤"
+    else
         log_warning "首次部署需要下载Python依赖包（约420MB）"
         log_info "这可能需要5-10分钟，取决于网络速度..."
-        log_info "提示: 可使用国内镜像加速，详见 backend/INSTALLATION_GUIDE.md"
-
-        source venv/bin/activate
+        log_info "提示: 使用清华镜像加速下载"
 
         log_info "开始安装依赖..."
         # 尝试使用清华镜像加速
@@ -183,9 +184,6 @@ step5_start_backend() {
         pip install -r requirements.txt
 
         log_success "依赖安装完成"
-    else
-        log_info "虚拟环境已存在，跳过依赖安装"
-        source venv/bin/activate
     fi
 
     log_info "后台启动API服务..."

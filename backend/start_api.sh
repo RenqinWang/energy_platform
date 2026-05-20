@@ -11,18 +11,16 @@ export PATH=$SPARK_HOME/bin:$PATH
 # Navigate to backend directory
 cd /home/student/energy-platform/backend
 
-# Check if virtual environment exists
-if [ ! -d "venv" ]; then
-    echo "Creating virtual environment..."
-    python3 -m venv venv
+# Activate conda base environment
+eval "$(conda shell.bash hook)"
+conda activate base
+
+# Check if dependencies are installed
+if ! python -c "import fastapi, uvicorn, pyspark" 2>/dev/null; then
+    echo "Installing dependencies..."
+    pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt || \
+    pip install -r requirements.txt
 fi
-
-# Activate virtual environment
-source venv/bin/activate
-
-# Install dependencies
-echo "Installing dependencies..."
-pip install -r requirements.txt
 
 # Start the API server
 echo "Starting Energy Platform API server on http://0.0.0.0:8000"

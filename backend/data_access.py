@@ -73,8 +73,17 @@ class DataAccessLayer:
         # Order by time descending and limit
         df = df.orderBy(col("stat_hour").desc()).limit(limit)
 
-        # Convert to list of dictionaries
-        return [row.asDict() for row in df.collect()]
+        # Convert to list of dictionaries and convert date types to strings
+        result = []
+        for row in df.collect():
+            row_dict = row.asDict()
+            # Convert date/datetime objects to strings
+            for key, value in row_dict.items():
+                if hasattr(value, 'isoformat'):
+                    row_dict[key] = value.isoformat()
+            result.append(row_dict)
+
+        return result
 
     def query_daily_report(
         self,
@@ -112,8 +121,17 @@ class DataAccessLayer:
         # Order by date descending and limit
         df = df.orderBy(col("stat_date").desc()).limit(limit)
 
-        # Convert to list of dictionaries
-        return [row.asDict() for row in df.collect()]
+        # Convert to list of dictionaries and convert date types to strings
+        result = []
+        for row in df.collect():
+            row_dict = row.asDict()
+            # Convert date/datetime objects to strings
+            for key, value in row_dict.items():
+                if hasattr(value, 'isoformat'):
+                    row_dict[key] = value.isoformat()
+            result.append(row_dict)
+
+        return result
 
     def query_equipment_status(
         self,
@@ -151,8 +169,17 @@ class DataAccessLayer:
         # Order by time descending and limit
         df = df.orderBy(col("stat_time").desc()).limit(limit)
 
-        # Convert to list of dictionaries
-        return [row.asDict() for row in df.collect()]
+        # Convert to list of dictionaries and convert date types to strings
+        result = []
+        for row in df.collect():
+            row_dict = row.asDict()
+            # Convert date/datetime objects to strings
+            for key, value in row_dict.items():
+                if hasattr(value, 'isoformat'):
+                    row_dict[key] = value.isoformat()
+            result.append(row_dict)
+
+        return result
 
     def get_station_list(self) -> List[str]:
         """Get list of all station IDs"""

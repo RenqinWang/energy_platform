@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>能源平台数据展示系统</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>能源平台数据展示系统</h1>
+            <p class="subtitle">Energy Platform Data Visualization</p>
+        </header>
+
+        <!-- Control Panel -->
+        <div class="control-panel">
+            <div class="control-group">
+                <label for="stationSelect">站点选择：</label>
+                <select id="stationSelect">
+                    <option value="">全部站点</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label for="equipmentSelect">设备选择：</label>
+                <select id="equipmentSelect">
+                    <option value="">全部设备</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label for="startDate">开始日期：</label>
+                <input type="date" id="startDate">
+            </div>
+
+            <div class="control-group">
+                <label for="endDate">结束日期：</label>
+                <input type="date" id="endDate">
+            </div>
+
+            <div class="control-group">
+                <button id="queryBtn" class="btn-primary">查询数据</button>
+                <button id="refreshBtn" class="btn-secondary">刷新</button>
+            </div>
+        </div>
+
+        <!-- Status Cards -->
+        <div class="status-cards">
+            <div class="card">
+                <div class="card-icon">⚡</div>
+                <div class="card-content">
+                    <h3>总能耗</h3>
+                    <p class="card-value" id="totalEnergy">--</p>
+                    <p class="card-unit">kWh</p>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-icon">❄️</div>
+                <div class="card-content">
+                    <h3>总供冷量</h3>
+                    <p class="card-value" id="totalCooling">--</p>
+                    <p class="card-unit">kWh</p>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-icon">📊</div>
+                <div class="card-content">
+                    <h3>平均COP</h3>
+                    <p class="card-value" id="avgCOP">--</p>
+                    <p class="card-unit"></p>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-icon">💰</div>
+                <div class="card-content">
+                    <h3>净利润</h3>
+                    <p class="card-value" id="netProfit">--</p>
+                    <p class="card-unit">元</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Section -->
+        <div class="charts-section">
+            <!-- Daily Report Chart -->
+            <div class="chart-container">
+                <h2>日报表 - 能耗与供冷量趋势</h2>
+                <canvas id="dailyReportChart"></canvas>
+            </div>
+
+            <!-- Hourly Supply Curve Chart -->
+            <div class="chart-container">
+                <h2>小时供能曲线 - 功率与温度</h2>
+                <canvas id="supplyCurveChart"></canvas>
+            </div>
+
+            <!-- COP Trend Chart -->
+            <div class="chart-container">
+                <h2>COP趋势分析</h2>
+                <canvas id="copTrendChart"></canvas>
+            </div>
+
+            <!-- Economic Analysis Chart -->
+            <div class="chart-container">
+                <h2>经济指标分析</h2>
+                <canvas id="economicChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Data Table -->
+        <div class="table-section">
+            <h2>详细数据表</h2>
+            <div class="table-controls">
+                <button id="showDailyBtn" class="btn-tab active">日报表</button>
+                <button id="showHourlyBtn" class="btn-tab">小时数据</button>
+                <button id="exportBtn" class="btn-secondary">导出CSV</button>
+            </div>
+            <div class="table-wrapper">
+                <table id="dataTable">
+                    <thead id="tableHead"></thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>能源平台数据展示系统 | 数据来源：Delta Lake | 最后更新：<span id="lastUpdate">--</span></p>
+        </footer>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+        <div class="spinner"></div>
+        <p>加载中...</p>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/charts.js"></script>
+    <script src="js/table.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>

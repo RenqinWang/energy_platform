@@ -264,16 +264,44 @@ hdfs://node1:9000/
 ├── data-processing/
 │   ├── bronze-layer/
 │   ├── silver-layer/
+│   │   ├── generate_point_fact.py
+│   │   ├── generate_chiller_status.py
+│   │   └── generate_price_dim.py
 │   └── gold-layer/
-├── backend-api/
-├── frontend/
+│       ├── generate_supply_curve.py
+│       └── generate_daily_report.py
+├── backend/                          # 阶段5: FastAPI后端
+│   ├── main.py
+│   ├── data_access.py
+│   ├── config.py
+│   ├── requirements.txt
+│   ├── start_api.sh
+│   ├── test_api.py
+│   └── README.md
+├── frontend/                         # 阶段6: Web前端
+│   ├── index.html
+│   ├── css/
+│   │   └── style.css
+│   ├── js/
+│   │   ├── config.js
+│   │   ├── api.js
+│   │   ├── charts.js
+│   │   ├── table.js
+│   │   └── main.js
+│   └── README.md
 ├── config/
 ├── scripts/
 │   ├── verify_stage2.py
-│   └── test-cluster.py
+│   ├── verify_stage3.py
+│   └── verify_stage4.py
 └── docs/
     ├── implementation-plan.md
-    └── stage2_completion_summary.md
+    ├── STAGE2_WORK_SUMMARY.md
+    ├── STAGE3_WORK_SUMMARY.md
+    ├── STAGE4_WORK_SUMMARY.md
+    ├── STAGE5_WORK_SUMMARY.md
+    ├── STAGE6_WORK_SUMMARY.md
+    └── PROJECT_MEMO.md
 ```
 
 ---
@@ -499,12 +527,11 @@ docker logs friendly_shockley
 | Kafka (Docker映射) | 29092 | 本地访问Kafka端口 |
 | Zookeeper | 2181 | Zookeeper客户端端口 |
 
-### 应用端口 (规划)
+### 应用端口
 | 服务 | 端口 | 说明 |
 |------|------|------|
-| Backend API | 8000 | FastAPI后端服务 |
-| React Frontend | 3000 | 开发环境前端 |
-| React Frontend | 80 | 生产环境前端 |
+| Backend API | 8000 | FastAPI后端服务 (已实现) |
+| Frontend | 8080 | Web前端界面 (已实现) |
 
 ---
 
@@ -582,13 +609,32 @@ VACUUM bronze_sensor_raw RETAIN 168 HOURS
 docker start friendly_shockley && docker logs -f friendly_shockley
 ```
 
-### 一键验证阶段2数据
+### 一键验证阶段3数据
 ```bash
 cd /home/student/energy-platform && \
 /home/student/spark-3.5.7-bin-hadoop3/bin/spark-submit \
   --master 'local[*]' \
   --packages io.delta:delta-spark_2.12:3.2.0 \
-  scripts/verify_stage2.py
+  scripts/verify_stage3.py
+```
+
+### 一键验证阶段4数据
+```bash
+cd /home/student/energy-platform && \
+/home/student/spark-3.5.7-bin-hadoop3/bin/spark-submit \
+  --master 'local[*]' \
+  --packages io.delta:delta-spark_2.12:3.2.0 \
+  scripts/verify_stage4.py
+```
+
+### 一键启动后端API服务
+```bash
+cd /home/student/energy-platform/backend && ./start_api.sh
+```
+
+### 一键启动前端服务
+```bash
+cd /home/student/energy-platform/frontend && python3 -m http.server 8080
 ```
 
 ### 一键查看HDFS数据湖
@@ -604,6 +650,10 @@ export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 && \
 | 日期 | 更新内容 | 更新人 |
 |------|----------|--------|
 | 2026-05-20 | 创建备忘录，记录阶段2完成时的配置 | Claude |
+| 2026-05-20 | 添加阶段3 Silver层数据治理配置 | Claude |
+| 2026-05-20 | 添加阶段4 Gold层数据分析配置 | Claude |
+| 2026-05-20 | 添加阶段5 FastAPI后端服务配置 | Claude |
+| 2026-05-20 | 添加阶段6 Web前端界面配置 | Claude |
 
 ---
 

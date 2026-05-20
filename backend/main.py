@@ -1,0 +1,236 @@
+"""
+FastAPI Backend for Energy Platform
+Provides REST API endpoints for querying Delta Lake data
+"""
+from fastapi import FastAPI, Query, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+from typing import Optional, List, Dict, Any
+from datetime import datetime, date
+import config
+from data_access import dal
+
+
+# Pydantic models for API responses
+class SupplyCurveRecord(BaseModel):
+    station_id: str
+    equipment_id: str
+    stat_hour: str
+    avg_supply_temp: Optional[float]
+    max_supply_temp: Optional[float]
+    min_supply_temp: Optional[float]
+    avg_power: Optional[float]
+    run_minutes: Optional[int]
+    energy_consumption_kwh: Optional[float]
+    cooling_capacity_kw: Optional[float]
+    cooling_supply_kwh: Optional[float]
+    operation_rate: Optional[float]
+    record_count: Optional[int]
+    dt: Optional[str]
+
+
+class DailyReportRecord(BaseModel):
+    station_id: str
+    equipment_id: str
+    stat_date: str
+    avg_supply_temp: Optional[float]
+    total_energy_consumption_kwh: Optional[float]
+    total_cooling_supply_kwh: Optional[float]
+    total_run_minutes: Optional[int]
+    daily_operation_rate: Optional[float]
+    avg_cop: Optional[float]
+    energy_cost: Optional[float]
+    cooling_revenue: Optional[float]
+    net_profit: Optional[float]
+    hour_count: Optional[int]
+    dt: Optional[str]
+
+
+class EquipmentStatusRecord(BaseModel):
+    station_id: str
+    equipment_id: str
+    stat_time: str
+    supply_temp: Optional[float]
+    pressure: Optional[float]
+    flow: Optional[float]
+    power: Optional[float]
+    runtime_hours: Optional[float]
+    start_count: Optional[int]
+    run_flag: Optional[int]
+    record_count: Optional[int]
+    dt: Optional[str]
+
+
+class HealthResponse(BaseModel):
+    status: str
+    timestamp: str
+    version: str
+
+
+class StationListResponse(BaseModel):
+    stations: List[str]
+
+
+class EquipmentListResponse(BaseModel):
+    equipment: List[str]
+
+
+# Initialize FastAPI app
+app = FastAPI(
+    title=config.API_TITLE,
+    version=config.API_VERSION,
+    description=config.API_DESCRIPTION
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=config.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/", response_model=HealthResponse)
+async def root():
+    """Root endpoint - health check"""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "version": config.API_VERSION
+    }
+
+
+@app.get("/health", response_model=HealthResponse)
+async def health_check():
+    """Health check endpoint"""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "version": config.API_VERSION
+    }
+
+
+@app.get("/api/stations", response_model=StationListResponse)
+async def get_stations():
+    """Get list of all station IDs"""
+    try:
+        stations = dal.get_station_list()
+        return {"stations": stations}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to query stations: {str(e)}")
+
+
+@app.get("/api/equipment", response_model=EquipmentListResponse)
+async def get_equipment(
+    station_id: Optional[str] = Query(None, description="Filter by station ID")
+):
+    """Get list of equipment IDs, optionally filtered by station"""
+    try:
+        equipment = dal.get_equipment_list(station_id)
+        return {"equipment": equipment}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to query equipment: {str(e)}")
+
+
+@app.get("/api/supply-curve", response_model=List[SupplyCurveRecord])
+async def get_supply_curve(
+    station_id: Optional[str] = Query(None, description="Filter by station ID"),
+    equipment_id: Optional[str] = Query(None, description="Filter by equipment ID"),
+    start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
+    limit: int = Query(1000, ge=1, le=10000, description="Maximum number of records")
+):
+    """
+    Query hourly supply curve data
+
+    Returns hourly aggregated data including:
+    - Temperature metrics (avg, max, min)
+    - Power consumption
+    - Energy consumption (kWh)
+    - Cooling capacity and supply
+    - Operation rate
+    """
+    try:
+        data = dal.query_supply_curve(
+            station_id=station_id,
+            equipment_id=equipment_id,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit
+        )
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to query supply curve: {str(e)}")
+
+
+@app.get("/api/daily-report", response_model=List[DailyReportRecord])
+async def get_daily_report(
+    station_id: Optional[str] = Query(None, description="Filter by station ID"),
+    equipment_id: Optional[str] = Query(None, description="Filter by equipment ID"),
+    start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
+    limit: int = Query(1000, ge=1, le=10000, description="Maximum number of records")
+):
+    """
+    Query daily report data
+
+    Returns daily aggregated data including:
+    - Energy consumption and cooling supply
+    - COP (Coefficient of Performance)
+    - Economic indicators (cost, revenue, profit)
+    - Operation rate
+    """
+    try:
+        data = dal.query_daily_report(
+            station_id=station_id,
+            equipment_id=equipment_id,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit
+        )
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to query daily report: {str(e)}")
+
+
+@app.get("/api/equipment-status", response_model=List[EquipmentStatusRecord])
+async def get_equipment_status(
+    station_id: Optional[str] = Query(None, description="Filter by station ID"),
+    equipment_id: Optional[str] = Query(None, description="Filter by equipment ID"),
+    start_time: Optional[str] = Query(None, description="Start time (YYYY-MM-DD HH:mm:ss)"),
+    end_time: Optional[str] = Query(None, description="End time (YYYY-MM-DD HH:mm:ss)"),
+    limit: int = Query(1000, ge=1, le=10000, description="Maximum number of records")
+):
+    """
+    Query equipment status data (minute-level)
+
+    Returns minute-level equipment status including:
+    - Temperature, pressure, flow
+    - Power consumption
+    - Runtime hours and start count
+    - Run flag (on/off status)
+    """
+    try:
+        data = dal.query_equipment_status(
+            station_id=station_id,
+            equipment_id=equipment_id,
+            start_time=start_time,
+            end_time=end_time,
+            limit=limit
+        )
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to query equipment status: {str(e)}")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on shutdown"""
+    dal.close()
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

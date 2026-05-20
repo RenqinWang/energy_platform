@@ -170,11 +170,23 @@ step5_start_backend() {
     if [ ! -d "venv" ]; then
         log_info "创建虚拟环境..."
         python3 -m venv venv
-    fi
 
-    log_info "激活虚拟环境并安装依赖..."
-    source venv/bin/activate
-    pip install -q -r requirements.txt
+        log_warning "首次部署需要下载Python依赖包（约420MB）"
+        log_info "这可能需要5-10分钟，取决于网络速度..."
+        log_info "提示: 可使用国内镜像加速，详见 backend/INSTALLATION_GUIDE.md"
+
+        source venv/bin/activate
+
+        log_info "开始安装依赖..."
+        # 尝试使用清华镜像加速
+        pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt || \
+        pip install -r requirements.txt
+
+        log_success "依赖安装完成"
+    else
+        log_info "虚拟环境已存在，跳过依赖安装"
+        source venv/bin/activate
+    fi
 
     log_info "后台启动API服务..."
     nohup uvicorn main:app --host 0.0.0.0 --port 8000 > /tmp/backend_api.log 2>&1 &

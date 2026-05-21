@@ -23,6 +23,6 @@ if ! python -c "import fastapi, uvicorn, pyspark" 2>/dev/null; then
 fi
 
 # Start the API server
-echo "Starting Energy Platform API server on http://0.0.0.0:8000"
-echo "API documentation available at http://0.0.0.0:8000/docs"
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+echo "Starting Energy Platform API server on http://0.0.0.0:8001"
+echo "API documentation available at http://0.0.0.0:8001/docs"
+uvicorn main:app --host 0.0.0.0 --port 8001 --reload

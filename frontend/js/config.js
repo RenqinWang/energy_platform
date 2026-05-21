@@ -1,6 +1,6 @@
 // API Configuration
 const API_CONFIG = {
-    baseURL: 'http://localhost:8000',
+    baseURL: 'http://115.120.208.241:8001',
     endpoints: {
         health: '/health',
         stations: '/api/stations',

@@ -72,15 +72,22 @@ def main():
     dedup_count = df_price.count()
     print(f"   ✅ 去重后记录数: {dedup_count}")
 
-    # 5. 选择最终字段
+    # 5. 选择最终字段并添加派生字段
     print("\n📋 步骤 4: 选择最终字段...")
+
+    # 添加 price_year_month 字段（格式：YYYY-MM）
+    df_price = df_price.withColumn(
+        "price_year_month",
+        date_format(col("effective_date"), "yyyy-MM")
+    )
+
     df_price = df_price.select(
         "station_code",
         "price_type",
         "price",
         "effective_date",
         "updated_at",
-        "source_type",
+        col("source").alias("source_type"),  # 重命名 source 为 source_type
         "price_year_month"
     )
 

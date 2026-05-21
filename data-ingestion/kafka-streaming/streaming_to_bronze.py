@@ -17,10 +17,10 @@ def create_spark_session():
     spark = (
         SparkSession.builder
         .appName("Kafka_Streaming_to_Bronze")
-        .master("spark://node2:7077")
+        .master("spark://node2:7077")  # 使用集群模式
         .config("spark.executor.memory", "2g")
         .config("spark.executor.cores", "2")
-        .config("spark.driver.memory", "2g")
+        .config("spark.driver.memory", "4g")
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
         .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
         .config("spark.jars.packages",

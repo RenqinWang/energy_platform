@@ -46,16 +46,15 @@ const TableManager = {
         tbody.innerHTML = '';
 
         if (!data || data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="12" style="text-align: center;">暂无数据</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">暂无数据</td></tr>';
             return;
         }
 
-        // Create header
+        // Create header - 只显示有数据的列
         const headerRow = document.createElement('tr');
         const headers = [
-            '日期', '站点', '设备', '平均温度(°C)', '总能耗(kWh)',
-            '总供冷量(kWh)', '运行时长(分钟)', '运行率(%)', 'COP',
-            '能源成本(元)', '供冷收入(元)', '净利润(元)'
+            '日期', '站点', '设备', '平均温度(°C)',
+            '运行时长(分钟)', '运行率(%)', '记录数'
         ];
         headers.forEach(header => {
             const th = document.createElement('th');
@@ -64,7 +63,7 @@ const TableManager = {
         });
         thead.appendChild(headerRow);
 
-        // Create rows
+        // Create rows - 只显示有数据的列
         data.forEach(row => {
             const tr = document.createElement('tr');
             tr.innerHTML = `
@@ -72,19 +71,23 @@ const TableManager = {
                 <td>${row.station_id || '--'}</td>
                 <td>${row.equipment_id || '--'}</td>
                 <td>${NumberUtils.formatNumber(row.avg_supply_temp, 1)}</td>
-                <td>${NumberUtils.formatNumber(row.total_energy_consumption_kwh, 2)}</td>
-                <td>${NumberUtils.formatNumber(row.total_cooling_supply_kwh, 2)}</td>
                 <td>${NumberUtils.formatNumber(row.total_run_minutes, 0)}</td>
                 <td>${NumberUtils.formatPercent(row.daily_operation_rate, 1)}</td>
-                <td>${NumberUtils.formatNumber(row.avg_cop, 2)}</td>
-                <td>${NumberUtils.formatNumber(row.energy_cost, 2)}</td>
-                <td>${NumberUtils.formatNumber(row.cooling_revenue, 2)}</td>
-                <td class="${row.net_profit >= 0 ? 'text-success' : 'text-danger'}">
-                    ${NumberUtils.formatNumber(row.net_profit, 2)}
-                </td>
+                <td>${row.hour_count || '--'}</td>
             `;
             tbody.appendChild(tr);
         });
+
+        // 添加数据说明
+        const noteRow = document.createElement('tr');
+        noteRow.innerHTML = `
+            <td colspan="7" style="background-color: #fff3cd; padding: 10px; text-align: left; font-size: 0.9em;">
+                <strong>📝 数据说明：</strong>当前历史数据仅包含温度和压力传感器数据，缺少功率、流量等字段，
+                因此能耗、供冷量、COP、成本和收益等计算指标暂时无法显示。
+                完整数据接入后，这些指标将自动计算并显示。
+            </td>
+        `;
+        tbody.appendChild(noteRow);
     },
 
     // Render hourly supply curve table
@@ -97,7 +100,7 @@ const TableManager = {
         tbody.innerHTML = '';
 
         if (!data || data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="11" style="text-align: center;">暂无数据</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">暂无数据</td></tr>';
             return;
         }
 

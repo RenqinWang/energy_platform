@@ -148,7 +148,7 @@ def main():
         col("system_type"),
         col("equipment_id"),
         col("theme"),
-        col("event_time"),
+        col("timestamp").alias("event_time"),  # 修正：使用timestamp字段
         col("value"),
         col("unit"),
         col("is_simulated"),

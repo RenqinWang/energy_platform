@@ -27,6 +27,9 @@ CORS_ORIGINS = [
     "http://localhost:8080",
     "http://127.0.0.1:3000",
     "http://127.0.0.1:8080",
+    "http://115.120.208.241:8080",
+    "http://115.120.208.241:8001",
+    "*",  # Allow all origins for development
 ]
 
 # Set environment variables

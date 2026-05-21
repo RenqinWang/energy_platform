@@ -35,8 +35,9 @@ const App = {
 
     // Set default date range
     setDefaultDateRange() {
-        const endDate = DateUtils.getToday();
-        const startDate = DateUtils.getDaysAgo(30);
+        // 设置为2018年数据范围
+        const startDate = '2018-01-01';
+        const endDate = '2018-05-31';
 
         document.getElementById('startDate').value = startDate;
         document.getElementById('endDate').value = endDate;

@@ -10,6 +10,7 @@ from pyspark.sql.functions import col, lit, current_timestamp, to_date
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, TimestampType
 import os
 from datetime import datetime
+from functools import reduce
 
 def create_spark_session():
     """创建Spark Session"""
@@ -87,11 +88,9 @@ def main():
         print("\n❌ 没有成功加载任何数据")
         return
 
-    # 合并所有数据
+    # 合并所有数据 - 使用reduce避免序列化问题
     print(f"\n合并 {len(all_data)} 个数据集...")
-    combined_df = all_data[0]
-    for df in all_data[1:]:
-        combined_df = combined_df.union(df)
+    combined_df = reduce(lambda df1, df2: df1.union(df2), all_data)
 
     total_records = combined_df.count()
     print(f"总记录数: {total_records:,}")
@@ -100,7 +99,7 @@ def main():
     print(f"\n写入Bronze层: {bronze_path}")
     combined_df.write \
         .format("delta") \
-        .mode("append") \
+        .mode("overwrite") \
         .partitionBy("dt") \
         .save(bronze_path)
 

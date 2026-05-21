@@ -84,14 +84,14 @@ def main():
         # 功率相关
         spark_max(when(col("theme") == "power", col("value"))).alias("power"),
 
-        # 运行时长（累计）
-        spark_max(when(col("theme") == "runtime", col("value"))).alias("runtime_hours"),
+        # 运行时长（累计）- 从"运行时间"点位获取
+        spark_max(when((col("theme") == "status") & col("point_name").contains("运行时间"), col("value"))).alias("runtime_hours"),
 
         # 启动次数（累计）
         spark_max(when(col("theme") == "count", col("value"))).alias("start_count"),
 
-        # 运行状态
-        spark_max(when(col("theme") == "status", col("value"))).alias("run_flag"),
+        # 运行状态（0/1）- 从"运行"点位获取，排除"运行时间"
+        spark_max(when((col("theme") == "status") & ~col("point_name").contains("运行时间"), col("value"))).alias("run_flag"),
 
         # 记录数（用于质量检查）
         count("*").alias("record_count")

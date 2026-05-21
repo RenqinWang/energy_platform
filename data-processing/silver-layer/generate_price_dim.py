@@ -81,18 +81,20 @@ def main():
         date_format(col("effective_date"), "yyyy-MM")
     )
 
+    # 先添加元数据字段
+    df_price = df_price.withColumn("created_at", current_timestamp())
+
+    # 然后选择最终字段
     df_price = df_price.select(
         "station_code",
         "price_type",
         "price",
         "effective_date",
-        "updated_at",
+        col("updated_at").cast("timestamp").alias("data_updated_at"),  # 重命名避免冲突
         col("source").alias("source_type"),  # 重命名 source 为 source_type
-        "price_year_month"
+        "price_year_month",
+        "created_at"
     )
-
-    # 添加元数据字段
-    df_price = df_price.withColumn("created_at", current_timestamp())
 
     # 6. 数据预览
     print("\n📊 标准化后数据预览:")
@@ -111,6 +113,7 @@ def main():
     df_price.write \
         .format("delta") \
         .mode("overwrite") \
+        .option("overwriteSchema", "true") \
         .partitionBy("price_year_month") \
         .save(output_path)
 

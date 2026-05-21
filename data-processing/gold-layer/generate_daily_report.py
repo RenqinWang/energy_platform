@@ -73,7 +73,8 @@ def main():
         spark_sum(col("cooling_supply_kwh")).alias("total_cooling_supply_kwh"),
 
         # 运行统计
-        spark_max(col("runtime_hours")).alias("total_runtime_hours"),
+        spark_sum(col("runtime_hours")).alias("total_runtime_hours"),  # 累加每小时的运行时长
+        spark_max(col("cumulative_runtime_hours")).alias("cumulative_runtime_hours"),  # 累计运行时长
         spark_max(col("start_count")).alias("total_start_count"),
         spark_sum(col("run_minutes")).alias("total_run_minutes"),
 
@@ -146,10 +147,11 @@ def main():
         # 供冷指标
         "total_cooling_supply_kwh",
         # 运行指标
-        "total_runtime_hours",
+        "total_runtime_hours",  # 该日的实际运行时长（小时）
+        "cumulative_runtime_hours",  # 累计运行时长
         "total_start_count",
-        "total_run_minutes",
-        "daily_operation_rate",
+        "total_run_minutes",  # 该日的运行分钟数
+        "daily_operation_rate",  # 运行率（0-100%）
         # 效率指标
         "avg_cop",
         # 经济指标
@@ -193,6 +195,7 @@ def main():
     df_daily.write \
         .format("delta") \
         .mode("overwrite") \
+        .option("overwriteSchema", "true") \
         .partitionBy("dt") \
         .save(output_path)
 

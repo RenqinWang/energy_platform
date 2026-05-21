@@ -105,13 +105,13 @@ def main():
         spark_max(col("power")).alias("max_power"),
         spark_min(col("power")).alias("min_power"),
 
-        # 运行时长（小时）
-        spark_max(col("runtime_hours")).alias("runtime_hours"),
+        # 累计运行时长（小时）- 从Silver层获取的累计值
+        spark_max(col("runtime_hours")).alias("cumulative_runtime_hours"),
 
         # 启动次数
         spark_max(col("start_count")).alias("start_count"),
 
-        # 运行状态（运行的分钟数）
+        # 运行分钟数（该小时内运行状态为1的分钟数，0-60之间）
         spark_sum(col("run_flag")).alias("run_minutes"),
 
         # 记录数（用于质量检查）
@@ -121,10 +121,16 @@ def main():
     # 5. 计算派生指标
     print("\n➕ 步骤 4: 计算派生指标...")
 
-    # 计算能耗（kWh）= 平均功率 * 运行分钟数 / 60
+    # 计算该小时的实际运行时长（小时）= 运行分钟数 / 60
+    df_hourly = df_hourly.withColumn(
+        "runtime_hours",
+        col("run_minutes") / 60.0
+    )
+
+    # 计算能耗（kWh）= 平均功率 * 运行时长
     df_hourly = df_hourly.withColumn(
         "energy_consumption_kwh",
-        col("avg_power") * col("run_minutes") / 60.0
+        col("avg_power") * col("runtime_hours")
     )
 
     # 计算制冷量（kW）
@@ -135,16 +141,17 @@ def main():
         col("avg_power") * 3.0  # 假设COP=3（能效比）
     )
 
-    # 计算供冷量（kWh）= 制冷量 * 运行分钟数 / 60
+    # 计算供冷量（kWh）= 制冷量 * 运行时长
     df_hourly = df_hourly.withColumn(
         "cooling_supply_kwh",
-        col("cooling_capacity_kw") * col("run_minutes") / 60.0
+        col("cooling_capacity_kw") * col("runtime_hours")
     )
 
-    # 计算运行率（%）= 运行分钟数 / 60
+    # 计算运行率（%）= (运行分钟数 / 60) * 100
+    # 正常范围: 0% ~ 100%
     df_hourly = df_hourly.withColumn(
         "operation_rate",
-        col("run_minutes") / 60.0 * 100.0
+        (col("run_minutes") / 60.0) * 100.0
     )
 
     # 6. 添加元数据字段
@@ -180,10 +187,11 @@ def main():
         "cooling_capacity_kw",
         "cooling_supply_kwh",
         # 运行指标
-        "runtime_hours",
+        "runtime_hours",  # 该小时的实际运行时长（0-1小时）
+        "cumulative_runtime_hours",  # 累计运行时长（从Silver层获取）
         "start_count",
-        "run_minutes",
-        "operation_rate",
+        "run_minutes",  # 该小时的运行分钟数（0-60分钟）
+        "operation_rate",  # 运行率（0-100%）
         # 质量指标
         "record_count",
         # 分区字段
@@ -219,6 +227,7 @@ def main():
     df_hourly.write \
         .format("delta") \
         .mode("overwrite") \
+        .option("overwriteSchema", "true") \
         .partitionBy("dt") \
         .save(output_path)
 

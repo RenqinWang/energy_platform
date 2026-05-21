@@ -24,7 +24,8 @@ data/
 
 # Logs
 *.log
-logs/
+logs/*.log
+!logs/README.md
 
 # IDE
 .vscode/

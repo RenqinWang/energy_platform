@@ -21,7 +21,10 @@ export PATH=$HADOOP_HOME/bin:$SPARK_HOME/bin:$PATH
 
 PROJECT_HOME=/home/student/energy-platform
 HDFS_NAMENODE="hdfs://node1:9000"
-SPARK_MASTER="spark://node2:7077"
+SPARK_MASTER="spark://192.168.1.87:7077"
+SPARK_MASTER_HOST="192.168.1.87"
+NODE1_IP="192.168.0.94"
+KAFKA_BOOTSTRAP="192.168.1.87:9092,192.168.1.19:9092"
 
 # 日志函数
 log_info() {
@@ -125,7 +128,7 @@ step3_start_spark() {
         log_warning "Spark Master已在运行"
     else
         log_info "在Node-2上启动Spark Master..."
-        ssh student@node2 "$SPARK_HOME/sbin/start-master.sh" 2>/dev/null || log_warning "无法SSH到node2，跳过"
+        ssh student@node2 "export SPARK_LOCAL_IP=192.168.1.87 && export SPARK_MASTER_HOST=192.168.1.87 && export SPARK_HOME=$SPARK_HOME && \$SPARK_HOME/sbin/stop-master.sh >/dev/null 2>&1 || true; \$SPARK_HOME/sbin/start-master.sh --host 192.168.1.87 --port 7077 --webui-port 8080" 2>/dev/null || log_warning "无法SSH到node2，跳过"
         sleep 5
     fi
 
@@ -138,14 +141,8 @@ step3_start_spark() {
 step4_start_kafka() {
     print_header "步骤4: 启动Kafka生产者"
 
-    log_info "检查Docker容器..."
-    if docker ps 2>/dev/null | grep -q "friendly_shockley"; then
-        log_warning "Kafka生产者容器已在运行"
-        return 0
-    fi
-
-    log_info "启动Kafka生产者容器..."
-    docker start friendly_shockley 2>/dev/null || log_warning "Docker容器不存在，跳过"
+    log_info "启动Node2/Node3 Kafka realtime path..."
+    bash "$PROJECT_HOME/scripts/start-kafka-realtime.sh"
 
     log_success "Kafka生产者启动完成"
 }
@@ -248,13 +245,14 @@ step7_print_summary() {
     echo "🎉 智慧能源网监测平台部署成功！"
     echo ""
     echo "📊 服务访问地址:"
-    echo "  - 前端界面: http://localhost:8080"
-    echo "  - API文档:  http://localhost:8000/docs"
-    echo "  - API健康检查: http://localhost:8000/health"
+    echo "  - 前端界面: http://${NODE1_IP}:8080"
+    echo "  - API文档:  http://${NODE1_IP}:8000/docs"
+    echo "  - API健康检查: http://${NODE1_IP}:8000/health"
     echo ""
     echo "🔧 管理界面:"
     echo "  - HDFS Web UI: http://node1:9870"
-    echo "  - Spark Master UI: http://node2:8080"
+    echo "  - Spark Master UI: http://192.168.1.87:8080"
+    echo "  - Kafka UI: http://node2:8083"
     echo ""
     echo "📝 日志文件:"
     echo "  - 后端API: /tmp/backend_api.log"

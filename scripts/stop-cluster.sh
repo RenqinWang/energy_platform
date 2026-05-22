@@ -12,7 +12,12 @@ echo ""
 
 # Stop Kafka
 echo "📨 Stopping Kafka..."
-cd ~ && docker-compose stop 2>&1 | grep -v "warning" || true
+if [ -f /tmp/kafka_to_bronze_streaming.pid ]; then
+  kill "$(cat /tmp/kafka_to_bronze_streaming.pid)" 2>/dev/null || true
+  rm -f /tmp/kafka_to_bronze_streaming.pid
+fi
+ssh student@node2 "docker-compose -f /home/student/docker-compose.kafka-realtime.yml stop" 2>&1 | grep -v "warning" || true
+ssh student@node3 "docker-compose -f /home/student/docker-compose.kafka-realtime.yml stop" 2>&1 | grep -v "warning" || true
 
 # Stop Spark (on Node2)
 echo "⚡ Stopping Spark..."

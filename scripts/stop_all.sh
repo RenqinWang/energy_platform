@@ -29,7 +29,15 @@ echo -e "${GREEN}✓${NC} 后端API已停止"
 
 # 停止Kafka生产者
 echo -e "${YELLOW}[3/5]${NC} 停止Kafka生产者..."
-docker stop friendly_shockley 2>/dev/null || echo "  Kafka生产者未运行"
+if [ -f /tmp/kafka_to_bronze_streaming.pid ]; then
+    kill "$(cat /tmp/kafka_to_bronze_streaming.pid)" 2>/dev/null || true
+    rm -f /tmp/kafka_to_bronze_streaming.pid
+fi
+ssh student@node2 "docker stop friendly_shockley 2>/dev/null || true"
+ssh student@node3 "docker stop friendly_shockley 2>/dev/null || true"
+docker stop friendly_shockley 2>/dev/null || echo "  本机Kafka生产者未运行"
+ssh student@node2 "docker-compose -f /home/student/docker-compose.kafka-realtime.yml stop 2>/dev/null || true"
+ssh student@node3 "docker-compose -f /home/student/docker-compose.kafka-realtime.yml stop 2>/dev/null || true"
 echo -e "${GREEN}✓${NC} Kafka生产者已停止"
 
 # 停止Spark集群

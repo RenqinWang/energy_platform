@@ -8,8 +8,7 @@
 import re
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StructType, StructField, StringType
-from pyspark.sql.functions import col, lit, current_timestamp
-from datetime import datetime
+from pyspark.sql.functions import lit, current_timestamp
 
 def parse_ttl_file(file_path):
     """
@@ -24,7 +23,15 @@ def parse_ttl_file(file_path):
     pattern = r'<([^>]+)>\s+rdf:type\s+sosa:FeatureOfInterest\s*;\s*rdfs:label\s+"([^"]+)"@zh'
     matches = re.findall(pattern, content)
 
+    seen = {}
     for point_code, label in matches:
+        if point_code in seen:
+            if seen[point_code] != label:
+                print(f"⚠️  重复点位 {point_code} 标签不一致，保留第一条: {seen[point_code]} / {label}")
+            else:
+                print(f"⚠️  重复点位 {point_code}，保留第一条")
+            continue
+        seen[point_code] = label
         points.append({
             'point_code': point_code,
             'point_name': label
@@ -51,15 +58,15 @@ def extract_metadata(point_code, point_name):
     else:
         station_id = "unknown"
 
-    # 判断系统类型
-    if '冷机' in point_name or 'JZ' in point_code or 'LDSCS' in point_code or 'LDSHS' in point_code:
+    # 判断系统类型：中文业务语义优先，点位代码只作为兜底。
+    if '发电机' in point_name or point_code.startswith(('SLG_JZ', 'S_SLG_JZ')) or 'FDJ' in point_code:
+        system_type = 'generator'
+    elif '冷机' in point_name or 'LDSCS' in point_code or 'LDSHS' in point_code:
         system_type = 'chiller'
     elif '锅炉' in point_name or 'Boiler' in point_code or 'BOILER' in point_code:
         system_type = 'boiler'
     elif '三联供' in point_name or 'TT' in point_code:
         system_type = 'cchp'  # Combined Cooling, Heating and Power
-    elif '发电机' in point_name or 'FDJ' in point_code or 'gen' in point_code:
-        system_type = 'generator'
     elif '燃烧机' in point_name or 'Burner' in point_code:
         system_type = 'burner'
     else:
@@ -104,12 +111,33 @@ def extract_metadata(point_code, point_name):
         theme = 'other'
         unit = 'unknown'
 
+    # 细分测点角色，供宽表聚合时区分出水/回水等同一 theme 下的业务含义。
+    if theme == 'temperature' and ('出水温度' in point_name or '供水温度' in point_name or 'LDSCS' in point_code):
+        measure_role = 'supply_temp'
+    elif theme == 'temperature' and ('回水温度' in point_name or 'LDSHS' in point_code):
+        measure_role = 'return_temp'
+    elif theme == 'pressure':
+        measure_role = 'pressure'
+    elif theme == 'flow':
+        measure_role = 'flow'
+    elif theme == 'power':
+        measure_role = 'power'
+    elif theme == 'status':
+        measure_role = 'status'
+    elif theme == 'runtime':
+        measure_role = 'runtime'
+    elif theme == 'count':
+        measure_role = 'count'
+    else:
+        measure_role = None
+
     return {
         'station_id': station_id,
         'system_type': system_type,
         'equipment_id': equipment_id,
         'theme': theme,
-        'unit': unit
+        'unit': unit,
+        'measure_role': measure_role
     }
 
 def main():
@@ -144,7 +172,8 @@ def main():
             'system_type': metadata['system_type'],
             'equipment_id': metadata['equipment_id'],
             'theme': metadata['theme'],
-            'unit': metadata['unit']
+            'unit': metadata['unit'],
+            'measure_role': metadata['measure_role']
         })
 
     # 定义 Schema
@@ -155,7 +184,8 @@ def main():
         StructField("system_type", StringType(), True),
         StructField("equipment_id", StringType(), True),
         StructField("theme", StringType(), True),
-        StructField("unit", StringType(), True)
+        StructField("unit", StringType(), True),
+        StructField("measure_role", StringType(), True)
     ])
 
     # 创建 DataFrame
@@ -182,6 +212,7 @@ def main():
     df.write \
         .format("delta") \
         .mode("overwrite") \
+        .option("overwriteSchema", "true") \
         .save(output_path)
 
     print("✅ 点位字典维表生成完成！")

@@ -51,6 +51,7 @@ class EquipmentStatusRecord(BaseModel):
     equipment_id: str
     stat_time: str
     supply_temp: Optional[float]
+    return_temp: Optional[float]
     pressure: Optional[float]
     flow: Optional[float]
     power: Optional[float]

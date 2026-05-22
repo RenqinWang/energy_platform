@@ -1,188 +1,134 @@
 # 数据完整性分析报告
 
-## 问题描述
+## 当前结论
 
-前端展示的日报表数据中，除了**平均温度**字段外，其他字段（总能耗、总供冷量、COP、净利润等）均显示为 `--`（缺省值）。
+这份报告的旧版本是在 2026-05-21 生成的，当时结论是“Bronze 层只有温度数据，导致 Silver/Gold 大量字段为空”。该结论现在已经不准确。
 
-## 数据层级分析
+截至 2026-05-23，Silver 层治理逻辑已重新修复并重跑：
 
-### 1. 前端显示的是哪一层数据？
+- `silver_point_meta_dim` 已按 `point_code` 去重，`PT2005_P` 只保留 1 条。
+- `SLG_JZ*`、`S_SLG_JZ*` 已正确归类为 `generator`，不再混入冷机系统。
+- 点位字典新增 `measure_role`，冷机出水温度与回水温度已能分别聚合到 `supply_temp` 和 `return_temp`。
+- `silver_point_fact` 记录数为 6,117,217，与 `bronze_sensor_raw` 一致，不再存在 Join 放大。
 
-**答案：Gold 层 - 日报表数据 (`gold_report_daily`)**
+## 当前数据完整性统计
 
-- 表路径：`hdfs://node1:9000/lake/gold/gold_report_daily`
-- 数据粒度：按日期、站点、设备聚合
-- 总记录数：225 条
-- 时间范围：2018-01-01 至 2018-03-15（约 75 天 × 3 台设备）
-
-### 2. 数据完整性统计
-
-#### Gold 层 - 日报表 (gold_report_daily)
-```
-总记录数: 225
-✅ avg_supply_temp (平均温度): 225 条 (100%)
-❌ total_energy_consumption_kwh (总能耗): 0 条 (0%)
-❌ total_cooling_supply_kwh (总供冷量): 0 条 (0%)
-❌ avg_cop (平均COP): 0 条 (0%)
-❌ net_profit (净利润): 0 条 (0%)
-```
-
-#### Silver 层 - 冷机状态表 (silver_chiller_status)
-```
-总记录数: 32,292
-✅ supply_temp (供水温度): 32,292 条 (100%)
-❌ pressure (压力): 0 条 (0%)
-❌ flow (流量): 0 条 (0%)
-❌ power (功率): 0 条 (0%)
-❌ run_flag (运行状态): 0 条 (0%)
-```
-
-## 根本原因
-
-### Bronze 层数据源问题
-
-**原始数据只包含温度传感器数据，缺少其他类型的传感器数据：**
-
-1. ✅ **温度传感器** (theme=temperature) - 数据完整
-2. ❌ **压力传感器** (theme=pressure) - 数据缺失
-3. ❌ **流量传感器** (theme=flow) - 数据缺失
-4. ❌ **功率传感器** (theme=power) - 数据缺失
-5. ❌ **运行时长传感器** (theme=runtime) - 数据缺失
-6. ❌ **启动次数传感器** (theme=count) - 数据缺失
-7. ❌ **运行状态传感器** (theme=status) - 数据缺失
-
-### 数据流向分析
+### Silver 点位字典 (`silver_point_meta_dim`)
 
 ```
-Bronze Layer (bronze_sensor_raw)
-    ↓ 只有 temperature 主题的数据
-Silver Layer (silver_chiller_status)
-    ↓ pressure, flow, power, run_flag 字段为 NULL
-Gold Layer (gold_supply_curve_hourly)
-    ↓ 无法计算能耗、供冷量
-Gold Layer (gold_report_daily)
-    ↓ 经济指标全部为 NULL
-Frontend Display
-    ↓ 只能显示温度数据
+总记录数: 302
+point_code 唯一数: 302
+重复 point_code 数: 0
+PT2005_P: 1 条
+SLG_JZ* / S_SLG_JZ*: 64 条，system_type 全部为 generator
 ```
 
-## 如何补充缺省数据
+`measure_role` 分布：
 
-### 方案一：补充真实传感器数据（推荐）
-
-**步骤：**
-
-1. **配置 Kafka 生产者**，生成完整的传感器数据：
-   ```python
-   # 在 Kafka 生产者中添加其他传感器类型
-   sensor_themes = [
-       'temperature',  # 已有
-       'pressure',     # 需要添加
-       'flow',         # 需要添加
-       'power',        # 需要添加
-       'runtime',      # 需要添加
-       'count',        # 需要添加
-       'status'        # 需要添加
-   ]
-   ```
-
-2. **更新点位元数据字典** (`silver_point_dim`)：
-   - 添加压力、流量、功率等传感器的点位信息
-   - 确保每个设备都有完整的传感器配置
-
-3. **重新运行数据处理流程**：
-   ```bash
-   # 等待新数据流入 Bronze 层
-   # 重新生成 Silver 层
-   cd /home/student/energy-platform/data-processing/silver-layer
-   bash generate_chiller_status.sh
-   
-   # 重新生成 Gold 层
-   cd /home/student/energy-platform/data-processing/gold-layer
-   bash generate_supply_curve.sh
-   bash generate_daily_report.sh
-   ```
-
-### 方案二：使用模拟数据（测试用）
-
-**创建模拟数据生成脚本：**
-
-```python
-# 基于现有温度数据，生成合理的模拟值
-# - pressure: 基于温度推算（温度越低，压力越高）
-# - flow: 随机生成在合理范围内（50-150 m³/h）
-# - power: 基于设备型号设定（500-1500 kW）
-# - runtime: 累计运行时长
-# - run_flag: 基于功率判断（power > 0 则为 1）
+```
+NULL:        88
+status:      65
+supply_temp: 42
+return_temp: 42
+pressure:    24
+flow:        23
+count:       18
 ```
 
-**优点：**
-- 快速验证系统功能
-- 展示完整的数据流程
+### Silver 点位事实表 (`silver_point_fact`)
 
-**缺点：**
-- 不是真实数据
-- 不能用于生产环境
-
-### 方案三：从历史数据导入（如果有）
-
-如果企业有历史数据文件（CSV、Excel、数据库等）：
-
-1. 将历史数据转换为标准格式
-2. 导入到 Bronze 层
-3. 重新运行数据处理流程
-
-## 当前系统状态
-
-### ✅ 已正常工作的部分
-
-1. **数据采集层**：Kafka 生产者正常运行
-2. **数据存储层**：HDFS + Delta Lake 正常
-3. **数据处理层**：PySpark 脚本逻辑正确
-4. **API 服务层**：FastAPI 正常响应
-5. **前端展示层**：页面正常加载
-
-### ⚠️ 数据质量问题
-
-- **不是代码问题**：所有脚本逻辑都是正确的
-- **是数据源问题**：Bronze 层只有温度数据
-- **系统设计正确**：当完整数据到来时，会自动计算所有指标
-
-## 验证方法
-
-### 检查 Bronze 层原始数据
-
-```bash
-hdfs dfs -cat hdfs://node1:9000/lake/bronze/bronze_sensor_raw/*.json | head -20
+```
+bronze_sensor_raw: 6,117,217 条
+silver_point_fact: 6,117,217 条
+未匹配点位: 0 条
 ```
 
-查看是否包含 pressure、flow、power 等主题的数据。
+这说明 `pos.ttl` 中重复 `PT2005_P` 导致的 Join 放大问题已消除。
 
-### 检查点位元数据
+### Silver 冷机状态表 (`silver_chiller_status`)
 
-```bash
-# 查看点位字典中是否定义了其他传感器
-hdfs dfs -cat hdfs://node1:9000/lake/silver/silver_point_dim/*.parquet
+```
+总记录数: 403,820
+supply_temp 非空:     394,892
+return_temp 非空:     403,786
+pressure 非空:              0
+flow 非空:            403,802
+power 非空:                 0
+runtime_hours 非空:   372,233
+start_count 非空:     368,438
+run_flag 非空:        403,787
 ```
 
-## 结论
+因此，旧报告里“Silver 只有供水温度，flow/run_flag 全空”的说法已经不成立。现在冷机状态表已经具备出水温度、回水温度、流量、运行状态、运行时长和启动次数。
 
-1. **前端显示的是 Gold 层日报表数据**
-2. **数据缺失的根本原因是 Bronze 层只有温度传感器数据**
-3. **补充方法：在 Kafka 生产者中添加其他传感器类型的数据**
-4. **系统架构和代码逻辑都是正确的**，只需要补充数据源即可
+## 仍然存在的问题
+
+### 1. `power` 仍为空
+
+当前冷机状态表的 `power` 仍然全为空。直接影响：
+
+- `gold_supply_curve_hourly.energy_consumption_kwh`
+- `gold_supply_curve_hourly.cooling_capacity_kw` 当前仍依赖 `avg_power * 3.0`
+- `gold_supply_curve_hourly.cooling_supply_kwh`
+- `gold_report_daily.avg_cop`
+- `gold_report_daily.energy_cost`
+- `gold_report_daily.cooling_revenue`
+- `gold_report_daily.net_profit`
+
+也就是说，日报表里能耗、COP、收益等指标如果仍显示为缺省值，主要原因已经不是“只有温度数据”，而是冷机功率点位缺失或尚未映射进冷机宽表。
+
+### 2. `pressure` 仍为空
+
+点位字典中存在 `pressure` 角色，但当前 `silver_chiller_status.pressure` 为 0 条非空。压力不会直接决定当前日报收益计算，但会影响设备状态完整性展示和后续运行建议质量。
+
+### 3. Gold 层需要基于新 Silver 重跑
+
+当前已经重跑的是：
+
+```
+silver_point_meta_dim
+silver_point_fact
+silver_chiller_status
+```
+
+若要让前端日报和小时曲线体现最新治理结果，还需要继续重跑：
+
+```
+data-processing/gold-layer/generate_supply_curve.py
+data-processing/gold-layer/generate_daily_report.py
+```
+
+## 数据流向
+
+```
+bronze_sensor_raw
+  -> silver_point_meta_dim 映射
+  -> silver_point_fact
+  -> silver_chiller_status
+  -> gold_supply_curve_hourly
+  -> gold_report_daily
+  -> FastAPI / frontend
+```
+
+当前 Silver 层已修复；Gold 层还需要重跑，并且功率缺失问题仍需单独解决。
 
 ## 建议
 
-### 短期（演示用）
-- 使用方案二：生成模拟数据，展示完整功能
+### 短期
 
-### 长期（生产用）
-- 使用方案一：接入真实传感器数据
-- 确保所有设备的所有传感器都正常上报数据
+- 先重跑 Gold 层，让 `return_temp`、`flow`、`run_flag` 等新 Silver 字段传导到小时和日报结果。
+- 前端说明改为“功率字段缺失导致能耗、COP、收益暂不可用”，不要再写“只有温度数据”。
+
+### 中期
+
+- 调研 `pos.ttl` 和原始传感器数据中是否存在冷机功率相关点位。
+- 如果存在，补充 `measure_role=power` 的映射规则。
+- 如果不存在，决定是否用流量和温差计算供冷量，功率指标保留为空。
+
+### 长期
+
+- 为 generator、cchp、boiler 建立各自的状态宽表，避免把不同系统强行塞进 `silver_chiller_status`。
 
 ---
 
-**文档创建时间**: 2026-05-21  
-**数据检查时间**: 2026-05-21 10:51  
-**检查人员**: Claude (AI Assistant)
+文档更新时间: 2026-05-23

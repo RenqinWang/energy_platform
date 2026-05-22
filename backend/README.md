@@ -174,6 +174,7 @@ Query minute-level equipment status from `silver_chiller_status` table.
 - `equipment_id`: Equipment identifier
 - `stat_time`: Statistical time (YYYY-MM-DD HH:mm:ss)
 - `supply_temp`: Supply temperature (°C)
+- `return_temp`: Return temperature (°C)
 - `pressure`: Pressure (kPa)
 - `flow`: Flow rate (m³/h)
 - `power`: Power consumption (kW)

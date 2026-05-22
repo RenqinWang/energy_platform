@@ -82,8 +82,8 @@ const TableManager = {
         const noteRow = document.createElement('tr');
         noteRow.innerHTML = `
             <td colspan="7" style="background-color: #fff3cd; padding: 10px; text-align: left; font-size: 0.9em;">
-                <strong>📝 数据说明：</strong>当前历史数据仅包含温度和压力传感器数据，缺少功率、流量等字段，
-                因此能耗、供冷量、COP、成本和收益等计算指标暂时无法显示。
+                <strong>📝 数据说明：</strong>当前冷机历史数据已有出回水温度、流量和运行状态，
+                但功率字段仍缺失，因此能耗、COP、成本和收益等依赖功率的指标暂时无法显示。
                 完整数据接入后，这些指标将自动计算并显示。
             </td>
         `;

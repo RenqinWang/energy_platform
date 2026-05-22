@@ -7,8 +7,7 @@
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
-    col, when, max as spark_max, min as spark_min, avg, sum as spark_sum,
-    count, first, last, current_timestamp, date_format, hour, minute
+    col, when, max as spark_max, count, current_timestamp, date_format
 )
 
 def create_spark_session():
@@ -53,6 +52,9 @@ def main():
     print("\n📊 冷机系统主题分布:")
     df_chiller.groupBy("theme").count().orderBy("count", ascending=False).show()
 
+    print("\n📊 冷机系统测点角色分布:")
+    df_chiller.groupBy("measure_role").count().orderBy("count", ascending=False).show()
+
     # 查看冷机设备分布
     print("\n📊 冷机设备分布:")
     df_chiller.groupBy("equipment_id").count().orderBy("equipment_id").show()
@@ -73,16 +75,17 @@ def main():
     # 使用条件聚合来实现透视
     df_status = df_chiller.groupBy("station_id", "equipment_id", "stat_time", "dt").agg(
         # 温度相关
-        spark_max(when(col("theme") == "temperature", col("value"))).alias("supply_temp"),
+        spark_max(when(col("measure_role") == "supply_temp", col("value"))).alias("supply_temp"),
+        spark_max(when(col("measure_role") == "return_temp", col("value"))).alias("return_temp"),
 
         # 压力相关
-        spark_max(when(col("theme") == "pressure", col("value"))).alias("pressure"),
+        spark_max(when(col("measure_role") == "pressure", col("value"))).alias("pressure"),
 
         # 流量相关
-        spark_max(when(col("theme") == "flow", col("value"))).alias("flow"),
+        spark_max(when(col("measure_role") == "flow", col("value"))).alias("flow"),
 
         # 功率相关
-        spark_max(when(col("theme") == "power", col("value"))).alias("power"),
+        spark_max(when(col("measure_role") == "power", col("value"))).alias("power"),
 
         # 运行时长（累计）- 从"运行时间"点位获取
         spark_max(when((col("theme") == "status") & col("point_name").contains("运行时间"), col("value"))).alias("runtime_hours"),
@@ -99,9 +102,6 @@ def main():
 
     # 5. 添加派生字段
     print("\n➕ 步骤 5: 添加派生字段...")
-
-    # 添加回水温度（暂时设为NULL，因为当前数据中没有）
-    df_status = df_status.withColumn("return_temp", lit(None).cast("double"))
 
     # 添加元数据字段
     df_status = df_status.withColumn("created_at", current_timestamp()) \
@@ -144,6 +144,7 @@ def main():
     df_status.write \
         .format("delta") \
         .mode("overwrite") \
+        .option("overwriteSchema", "true") \
         .partitionBy("dt") \
         .save(output_path)
 
@@ -163,7 +164,7 @@ def main():
     print("\n📊 数据样例（带完整字段）:")
     df_verify.select(
         "station_id", "equipment_id", "stat_time",
-        "supply_temp", "pressure", "flow", "power", "run_flag"
+        "supply_temp", "return_temp", "pressure", "flow", "power", "run_flag"
     ).show(10, truncate=False)
 
     spark.stop()
@@ -173,5 +174,4 @@ def main():
     print("=" * 80)
 
 if __name__ == "__main__":
-    from pyspark.sql.functions import lit
     main()

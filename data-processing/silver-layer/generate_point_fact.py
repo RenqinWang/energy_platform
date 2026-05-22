@@ -8,8 +8,8 @@
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
-    col, when, lag, coalesce, lit, current_timestamp,
-    unix_timestamp, expr, to_date
+    col, when, lag, lit, current_timestamp,
+    unix_timestamp, count
 )
 from pyspark.sql.window import Window
 
@@ -111,6 +111,21 @@ def main():
     dict_count = df_dict.count()
     print(f"   ✅ 读取成功: {dict_count} 个点位")
 
+    print("\n🔍 点位字典唯一性检查...")
+    duplicate_dict = (
+        df_dict.groupBy("point_code")
+        .agg(count("*").alias("duplicate_count"))
+        .filter(col("duplicate_count") > 1)
+    )
+    duplicate_dict_count = duplicate_dict.count()
+    if duplicate_dict_count > 0:
+        print(f"   ⚠️  发现 {duplicate_dict_count} 个重复 point_code，Join 前将保留第一条")
+        duplicate_dict.show(20, truncate=False)
+        df_dict = df_dict.dropDuplicates(["point_code"])
+        print(f"   去重后点位数: {df_dict.count()}")
+    else:
+        print("   ✅ point_code 唯一")
+
     # 3. 关联点位字典，补齐业务字段
     print("\n🔗 步骤 3: 关联点位字典，补齐业务字段...")
 
@@ -123,7 +138,8 @@ def main():
             col("system_type"),
             col("equipment_id"),
             col("theme"),
-            col("unit")
+            col("unit"),
+            col("measure_role")
         ),
         on="sensor_id",
         how="left"
@@ -148,6 +164,7 @@ def main():
         col("system_type"),
         col("equipment_id"),
         col("theme"),
+        col("measure_role"),
         col("timestamp").alias("event_time"),  # 修正：使用timestamp字段
         col("value"),
         col("unit"),
@@ -178,6 +195,9 @@ def main():
     print("\n📈 按主题统计:")
     df_fact.groupBy("theme").count().orderBy("count", ascending=False).show()
 
+    print("\n📈 按测点角色统计:")
+    df_fact.groupBy("measure_role").count().orderBy("count", ascending=False).show()
+
     # 8. 写入Silver层
     output_path = "hdfs://node1:9000/lake/silver/silver_point_fact"
     print(f"\n💾 步骤 7: 写入 Silver 层: {output_path}")
@@ -185,6 +205,7 @@ def main():
     df_fact.write \
         .format("delta") \
         .mode("overwrite") \
+        .option("overwriteSchema", "true") \
         .partitionBy("dt") \
         .save(output_path)
 

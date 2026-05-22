@@ -90,6 +90,7 @@ def main() -> int:
             and summary["fact_count"] == summary["bronze_count"]
             and summary["fact_unmatched_rows"] == 0
             and summary["chiller_nonnull"]["return_temp"] > 0
+            and summary["chiller_nonnull"]["pressure"] > 0
             and summary["chiller_nonnull"]["flow"] > 0
             and summary["chiller_nonnull"]["run_flag"] > 0
         )

@@ -8,7 +8,7 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
     col, hour, date_format, sum as spark_sum, avg, max as spark_max,
-    min as spark_min, count, current_timestamp, to_timestamp
+    min as spark_min, count, current_timestamp, to_timestamp, when, lit
 )
 
 def create_spark_session():
@@ -26,22 +26,6 @@ def create_spark_session():
 
     spark.sparkContext.setLogLevel("WARN")
     return spark
-
-def calculate_cooling_capacity(supply_temp, return_temp, flow):
-    """
-    计算制冷量（kW）
-    公式: Q = c * m * ΔT
-    其中:
-    - c: 水的比热容，4.2 kJ/(kg·℃)
-    - m: 质量流量 (kg/s) = 体积流量 (m³/h) * 密度 (1000 kg/m³) / 3600
-    - ΔT: 温差 (℃) = return_temp - supply_temp
-
-    简化公式: Q (kW) = 1.163 * flow (m³/h) * ΔT (℃)
-    """
-    # 当前数据中没有return_temp和flow，使用估算值
-    # 假设温差为5℃，流量根据功率估算
-    # 这里先返回None，等有完整数据后再计算
-    return None
 
 def main():
     print("=" * 80)
@@ -133,12 +117,20 @@ def main():
         col("avg_power") * col("runtime_hours")
     )
 
-    # 计算制冷量（kW）
-    # 由于当前数据缺少return_temp和flow，暂时使用功率作为制冷量的估算
-    # 实际应用中，制冷量 = 1.163 * flow * (return_temp - supply_temp)
+    # 计算制冷量（kW）：优先使用水侧公式 Q = 1.163 * flow * ΔT。
+    # power 仍为空时，供冷量可以先由回水/出水温差和流量计算；能耗和COP仍依赖功率。
     df_hourly = df_hourly.withColumn(
         "cooling_capacity_kw",
-        col("avg_power") * 3.0  # 假设COP=3（能效比）
+        when(
+            col("avg_flow").isNotNull()
+            & col("avg_return_temp").isNotNull()
+            & col("avg_supply_temp").isNotNull()
+            & ((col("avg_return_temp") - col("avg_supply_temp")) > 0),
+            lit(1.163) * col("avg_flow") * (col("avg_return_temp") - col("avg_supply_temp"))
+        ).when(
+            col("avg_power").isNotNull(),
+            col("avg_power") * 3.0
+        )
     )
 
     # 计算供冷量（kWh）= 制冷量 * 运行时长

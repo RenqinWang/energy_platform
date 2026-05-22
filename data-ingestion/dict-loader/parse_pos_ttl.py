@@ -58,10 +58,17 @@ def extract_metadata(point_code, point_name):
     else:
         station_id = "unknown"
 
+    is_generator_point = (
+        '发电机' in point_name
+        or point_code.startswith(('SLG_JZ', 'S_SLG_JZ'))
+        or 'FDJ' in point_code
+    )
+    is_chilled_water_pressure = '冷水' in point_name and '压力' in point_name
+
     # 判断系统类型：中文业务语义优先，点位代码只作为兜底。
-    if '发电机' in point_name or point_code.startswith(('SLG_JZ', 'S_SLG_JZ')) or 'FDJ' in point_code:
+    if is_generator_point:
         system_type = 'generator'
-    elif '冷机' in point_name or 'LDSCS' in point_code or 'LDSHS' in point_code:
+    elif '冷机' in point_name or 'LDSCS' in point_code or 'LDSHS' in point_code or is_chilled_water_pressure:
         system_type = 'chiller'
     elif '锅炉' in point_name or 'Boiler' in point_code or 'BOILER' in point_code:
         system_type = 'boiler'
@@ -76,6 +83,8 @@ def extract_metadata(point_code, point_name):
     equipment_match = re.search(r'(\d+)#(冷机|锅炉|三联供|发电机|燃烧机)', point_name)
     if equipment_match:
         equipment_id = f"{system_type}_{equipment_match.group(1)}"
+    elif system_type == 'chiller' and is_chilled_water_pressure:
+        equipment_id = "chiller_header"
     else:
         equipment_id = point_code
 
@@ -83,19 +92,19 @@ def extract_metadata(point_code, point_name):
     if '温度' in point_name or '_T' in point_code or 'Temp' in point_code:
         theme = 'temperature'
         unit = '℃'
+    elif '功率' in point_name or 'Power' in point_code:
+        theme = 'power'
+        unit = 'kW'
     elif '压力' in point_name or '_P' in point_code or 'Press' in point_code:
         theme = 'pressure'
         unit = 'MPa'
     elif '流量' in point_name or '_F' in point_code or 'Flow' in point_code:
         theme = 'flow'
         unit = 'm³/h'
-    elif '功率' in point_name or 'Power' in point_code:
-        theme = 'power'
-        unit = 'kW'
     elif '运行' in point_name or 'RUN' in point_code or 'Run' in point_code:
         theme = 'status'
         unit = 'bool'
-    elif '累计' in point_name or 'TOTAL' in point_code or 'ADDH' in point_code:
+    elif '累计' in point_name or '电能' in point_name or 'TOTAL' in point_code or 'ADDH' in point_code:
         theme = 'cumulative'
         unit = 'kWh'
     elif '时间' in point_name or 'runtime' in point_code or 'Runtimes' in point_code:

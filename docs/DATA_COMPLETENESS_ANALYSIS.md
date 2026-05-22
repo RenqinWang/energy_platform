@@ -51,7 +51,7 @@ silver_point_fact: 6,117,217 条
 总记录数: 403,820
 supply_temp 非空:     394,892
 return_temp 非空:     403,786
-pressure 非空:              0
+pressure 非空:        364,374
 flow 非空:            403,802
 power 非空:                 0
 runtime_hours 非空:   372,233
@@ -59,7 +59,7 @@ start_count 非空:     368,438
 run_flag 非空:        403,787
 ```
 
-因此，旧报告里“Silver 只有供水温度，flow/run_flag 全空”的说法已经不成立。现在冷机状态表已经具备出水温度、回水温度、流量、运行状态、运行时长和启动次数。
+因此，旧报告里“Silver 只有供水温度，flow/run_flag 全空”的说法已经不成立。现在冷机状态表已经具备出水温度、回水温度、站级冷水总管压力、流量、运行状态、运行时长和启动次数。
 
 ## 仍然存在的问题
 
@@ -68,20 +68,13 @@ run_flag 非空:        403,787
 当前冷机状态表的 `power` 仍然全为空。直接影响：
 
 - `gold_supply_curve_hourly.energy_consumption_kwh`
-- `gold_supply_curve_hourly.cooling_capacity_kw` 当前仍依赖 `avg_power * 3.0`
-- `gold_supply_curve_hourly.cooling_supply_kwh`
 - `gold_report_daily.avg_cop`
 - `gold_report_daily.energy_cost`
-- `gold_report_daily.cooling_revenue`
 - `gold_report_daily.net_profit`
 
 也就是说，日报表里能耗、COP、收益等指标如果仍显示为缺省值，主要原因已经不是“只有温度数据”，而是冷机功率点位缺失或尚未映射进冷机宽表。
 
-### 2. `pressure` 仍为空
-
-点位字典中存在 `pressure` 角色，但当前 `silver_chiller_status.pressure` 为 0 条非空。压力不会直接决定当前日报收益计算，但会影响设备状态完整性展示和后续运行建议质量。
-
-### 3. Gold 层需要基于新 Silver 重跑
+### 2. Gold 层已基于新 Silver 重跑
 
 当前已经重跑的是：
 
@@ -89,14 +82,11 @@ run_flag 非空:        403,787
 silver_point_meta_dim
 silver_point_fact
 silver_chiller_status
+gold_supply_curve_hourly
+gold_report_daily
 ```
 
-若要让前端日报和小时曲线体现最新治理结果，还需要继续重跑：
-
-```
-data-processing/gold-layer/generate_supply_curve.py
-data-processing/gold-layer/generate_daily_report.py
-```
+`gold_supply_curve_hourly.cooling_capacity_kw` 已优先使用水侧公式 `1.163 * flow * (return_temp - supply_temp)` 计算，`gold_report_daily.total_cooling_supply_kwh` 和 `cooling_revenue` 已有结果。由于 `power` 仍为空，`energy_consumption_kwh`、`avg_cop`、`energy_cost` 和 `net_profit` 仍为空。
 
 ## 数据流向
 
@@ -110,14 +100,13 @@ bronze_sensor_raw
   -> FastAPI / frontend
 ```
 
-当前 Silver 层已修复；Gold 层还需要重跑，并且功率缺失问题仍需单独解决。
+当前 Silver 层已修复；Gold 层已重跑，并且功率缺失问题仍需单独解决。
 
 ## 建议
 
 ### 短期
 
-- 先重跑 Gold 层，让 `return_temp`、`flow`、`run_flag` 等新 Silver 字段传导到小时和日报结果。
-- 前端说明改为“功率字段缺失导致能耗、COP、收益暂不可用”，不要再写“只有温度数据”。
+- 前端说明改为“功率字段缺失导致能耗、COP、成本和净利润暂不可用”，不要再写“只有温度数据”。
 
 ### 中期
 

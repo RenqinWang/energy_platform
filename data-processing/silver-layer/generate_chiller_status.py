@@ -71,9 +71,20 @@ def main():
     # 4. 透视数据：将不同主题的点位转换为列
     print("\n🔄 步骤 4: 透视数据，生成宽表...")
 
+    # 冷水供/回水总管压力是站级测点，不属于单台冷机。先按站点+分钟聚合，
+    # 后续回填到每台冷机状态行，字段语义为“站级冷水总管压力”。
+    df_header_pressure = df_chiller.filter(
+        (col("equipment_id") == "chiller_header")
+        & (col("measure_role") == "pressure")
+    ).groupBy("station_id", "stat_time", "dt").agg(
+        spark_max(col("value")).alias("header_pressure")
+    )
+
+    df_chiller_equipment = df_chiller.filter(col("equipment_id") != "chiller_header")
+
     # 按 station_id, equipment_id, stat_time 分组聚合
     # 使用条件聚合来实现透视
-    df_status = df_chiller.groupBy("station_id", "equipment_id", "stat_time", "dt").agg(
+    df_status = df_chiller_equipment.groupBy("station_id", "equipment_id", "stat_time", "dt").agg(
         # 温度相关
         spark_max(when(col("measure_role") == "supply_temp", col("value"))).alias("supply_temp"),
         spark_max(when(col("measure_role") == "return_temp", col("value"))).alias("return_temp"),
@@ -99,6 +110,15 @@ def main():
         # 记录数（用于质量检查）
         count("*").alias("record_count")
     )
+
+    df_status = df_status.join(
+        df_header_pressure,
+        on=["station_id", "stat_time", "dt"],
+        how="left"
+    ).withColumn(
+        "pressure",
+        when(col("pressure").isNotNull(), col("pressure")).otherwise(col("header_pressure"))
+    ).drop("header_pressure")
 
     # 5. 添加派生字段
     print("\n➕ 步骤 5: 添加派生字段...")

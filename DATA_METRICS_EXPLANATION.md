@@ -1,7 +1,7 @@
 # 数据指标来源与计算方法说明
 
 **文档版本**: 1.0  
-**更新时间**: 2026-05-21
+**更新时间**: 2026-05-23
 
 ---
 
@@ -9,7 +9,7 @@
 
 ### 1. 点位事实表 (silver_point_fact)
 
-冷机系统的原始数据来自158个传感器点位，按主题（theme）分类：
+冷机系统的原始数据来自 158 个传感器点位，按主题（theme）分类：
 
 | 主题 | 记录数 | 说明 | 单位 | 示例点位 |
 |------|--------|------|------|----------|
@@ -20,10 +20,9 @@
 | **pressure** | 182,171 | 压力数据 | MPa | 2#站3#发电机油压 |
 | **other** | 364,350 | 其他数据 | - | 电池电压等 |
 
-**注意**: 
-- ❌ **没有功率（power）数据** - 原始数据中不包含功率传感器
-- ❌ **没有回水温度（return_temp）数据** - 只有出水温度
-- ❌ **没有运行时长（runtime）数据** - 只有启动次数
+**注意**:
+- 原始数据中没有明确的冷机实测功率点位
+- 但现在已经补出回水温度和运行状态，具备功率估算所需的核心字段
 
 ---
 
@@ -36,11 +35,11 @@
 | 字段 | 数据来源 | 计算方法 | 说明 |
 |------|----------|----------|------|
 | **supply_temp** | theme='temperature' | `MAX(value)` | 供水温度（℃） |
-| **return_temp** | ❌ 无数据 | `NULL` | 回水温度（当前数据中缺失） |
+| **return_temp** | measure_role='return_temp' | `MAX(value)` | 回水温度（已能聚合） |
 | **pressure** | theme='pressure' | `MAX(value)` | 压力（MPa） |
 | **flow** | theme='flow' | `MAX(value)` | 流量（m³/h） |
-| **power** | ❌ 无数据 | `NULL` | 功率（kW，当前数据中缺失） |
-| **runtime_hours** | theme='count' | `MAX(value)` | 累计运行时长（小时，实际是启动次数） |
+| **power** | 估算值 | `flow * ΔT / COP` | 功率（kW，按 COP=3 保守估算） |
+| **runtime_hours** | measure_role='runtime_hours' | `MAX(value)` | 累计运行时长（小时） |
 | **start_count** | theme='count' | `MAX(value)` | 累计启动次数 |
 | **run_flag** | theme='status' | `MAX(value)` | 运行状态（0=停机，1=运行） |
 | **record_count** | - | `COUNT(*)` | 该分钟内的记录数（数据质量指标） |
@@ -52,8 +51,8 @@ df_status = df_chiller.groupBy("station_id", "equipment_id", "stat_time", "dt").
     spark_max(when(col("theme") == "temperature", col("value"))).alias("supply_temp"),
     spark_max(when(col("theme") == "pressure", col("value"))).alias("pressure"),
     spark_max(when(col("theme") == "flow", col("value"))).alias("flow"),
-    spark_max(when(col("theme") == "power", col("value"))).alias("power"),  # 实际为NULL
-    spark_max(when(col("theme") == "runtime", col("value"))).alias("runtime_hours"),  # 实际为NULL
+    spark_max(when(col("measure_role") == "power", col("value"))).alias("power"),
+    spark_max(when(col("measure_role") == "runtime_hours", col("value"))).alias("runtime_hours"),
     spark_max(when(col("theme") == "count", col("value"))).alias("start_count"),
     spark_max(when(col("theme") == "status", col("value"))).alias("run_flag"),
     count("*").alias("record_count")
@@ -70,22 +69,17 @@ df_status = df_chiller.groupBy("station_id", "equipment_id", "stat_time", "dt").
 
 ### 1. 平均功率 (avg_power)
 
-**数据来源**: ❌ **当前无数据**
+**数据来源**: 估算值
 
 **计算方法**:
 ```python
-avg(col("power")).alias("avg_power")  # 结果为 NULL
+avg(col("power")).alias("avg_power")
 ```
 
-**说明**: 
-- 原始数据中没有功率传感器
-- 需要从设备铭牌或能耗表获取功率数据
-- 或者通过电表数据计算：功率 = 电流 × 电压 × 功率因数
-
-**如何获取**:
-1. **硬件方案**: 安装功率表或电能表
-2. **软件方案**: 根据设备型号查询额定功率
-3. **估算方案**: 根据制冷量和COP反推（不准确）
+**说明**:
+- 当前不使用实测功率点位
+- 采用 `power = 1.163 * flow * (return_temp - supply_temp) / 3.0` 的保守估算
+- 只有在运行状态、流量和温差都有效时才回填
 
 ---
 
@@ -101,7 +95,7 @@ energy_consumption_kwh = avg_power × run_minutes ÷ 60
 **说明**:
 - 单位: kWh（千瓦时）
 - 公式: 能耗 = 平均功率(kW) × 运行时间(小时)
-- **当前状态**: 因为 `avg_power` 为 NULL，所以 `energy_consumption_kwh` 也为 NULL
+- 当前已有部分结果，但仍属于估算口径
 
 **示例计算**:
 ```
@@ -133,35 +127,28 @@ cooling_supply_kwh = cooling_capacity_kw × run_minutes ÷ 60
 
 **当前实现**（估算方案）:
 ```python
-# 因为缺少 return_temp，使用功率和COP估算
+# 先用水侧公式优先计算制冷量
+cooling_capacity_kw = 1.163 * flow * (return_temp - supply_temp)
+
+# 若水侧条件不满足，再用功率和COP回退
 cooling_capacity_kw = avg_power × 3.0  # 假设COP=3
 cooling_supply_kwh = cooling_capacity_kw × run_minutes ÷ 60
 ```
 
-**当前状态**: 因为 `avg_power` 为 NULL，所以 `cooling_supply_kwh` 也为 NULL
+**当前状态**: 已有部分结果，但核心口径仍依赖估算值
 
 **如何获取准确数据**:
-1. **最佳方案**: 安装回水温度传感器
-2. **次优方案**: 使用设备铭牌的额定制冷量
-3. **估算方案**: 根据功率和COP估算（当前方案）
+1. **最佳方案**: 安装回水温度传感器和实测功率表
+2. **次优方案**: 使用设备铭牌的额定制冷量和额定功率
+3. **当前方案**: 按水侧冷量和固定 COP 做保守估算
 
 ---
 
 ### 4. 运行时长 (runtime_hours)
 
-**数据来源**: Silver层的 `runtime_hours` 字段
+**数据来源**: Silver 层的 `run_flag` 字段
 
 **计算方法**:
-```python
-spark_max(col("runtime_hours")).alias("runtime_hours")
-```
-
-**说明**:
-- 这是**累计运行时长**，不是该小时的运行时长
-- 实际上这个字段映射的是 `start_count`（启动次数），数据有误
-- 正确的运行时长应该从 `run_flag` 计算
-
-**正确的计算方法**:
 ```python
 # 该小时的运行分钟数
 run_minutes = spark_sum(col("run_flag"))  # 统计运行状态为1的分钟数
@@ -169,6 +156,11 @@ run_minutes = spark_sum(col("run_flag"))  # 统计运行状态为1的分钟数
 # 该小时的运行小时数
 runtime_hours = run_minutes ÷ 60
 ```
+
+**说明**:
+- `runtime_hours` 表示该小时内的实际运行时长，范围通常为 0 到 1 小时。
+- `cumulative_runtime_hours` 才是从 Silver 层聚合出的累计运行时长。
+- 旧版本曾把累计值当成时段运行值，导致运行率异常；当前代码已经修正。
 
 ---
 
@@ -193,13 +185,7 @@ operation_rate = (45 ÷ 60) × 100 = 75%
 表示该小时内设备运行了45分钟，运行率为75%
 ```
 
-**实际数据**:
-```
-从查询结果看，operation_rate 的值远超100%（如40520%）
-这是因为 run_minutes 实际上是累计值（start_count），不是该小时的运行分钟数
-```
-
-**正确的计算逻辑**:
+**当前计算逻辑**:
 ```python
 # 步骤1: 在Silver层，run_flag 表示每分钟的运行状态（0或1）
 # 步骤2: 在Gold层按小时聚合时，统计运行状态为1的分钟数
@@ -215,12 +201,12 @@ operation_rate = (run_minutes ÷ 60) × 100  # 应该是0-100%之间的值
 
 | 指标 | 状态 | 问题 | 解决方案 |
 |------|------|------|----------|
-| **avg_power** | ❌ NULL | 无功率传感器数据 | 安装功率表或使用设备额定功率 |
-| **energy_consumption_kwh** | ❌ NULL | 依赖功率数据 | 先解决功率数据问题 |
-| **cooling_supply_kwh** | ❌ NULL | 缺少回水温度和功率 | 安装回水温度传感器或使用额定制冷量 |
-| **runtime_hours** | ⚠️ 错误 | 映射到了启动次数 | 修改脚本，从run_flag计算 |
-| **run_minutes** | ⚠️ 错误 | 使用了累计值 | 修改脚本，统计该时段内的运行分钟数 |
-| **operation_rate** | ⚠️ 错误 | 基于错误的run_minutes | 修改脚本，正确计算运行率 |
+| **avg_power** | ⚠️ 估算值 | 不是实测功率 | 后续补充功率点位或设备铭牌 |
+| **energy_consumption_kwh** | ✅ 有结果 | 依赖估算功率 | 保留估算口径并标注 |
+| **cooling_supply_kwh** | ✅ 有结果 | 依赖估算/回退口径 | 保留水侧优先、功率回退 |
+| **runtime_hours** | ✅ 正常 | 由 `run_flag` 计算 | 维持现有逻辑 |
+| **run_minutes** | ✅ 正常 | 统计该时段运行分钟数 | 维持现有逻辑 |
+| **operation_rate** | ✅ 正常 | 基于正确的 `run_minutes` | 维持现有逻辑 |
 
 ---
 
@@ -228,17 +214,14 @@ operation_rate = (run_minutes ÷ 60) × 100  # 应该是0-100%之间的值
 
 ### 短期方案（不需要硬件改动）
 
-1. **修复运行时长和运行率计算**
-   ```python
-   # 在 generate_supply_curve.py 中修改
-   run_minutes = spark_sum(col("run_flag"))  # 统计运行状态
-   operation_rate = (col("run_minutes") / 60.0) * 100.0  # 正确计算运行率
-   ```
+1. **保留当前估算链路**
+   - 继续使用水侧冷量优先、功率估算回填的策略
+   - 在报表和前端明确标注为估算值
 
-2. **使用设备额定参数**
+2. **补充设备额定参数**
    - 从设备铭牌获取额定功率和制冷量
    - 在配置文件中维护设备参数表
-   - 根据运行状态使用额定值估算
+   - 用真实参数替换固定 COP=3.0 的简化假设
 
 ### 中期方案（需要数据补充）
 

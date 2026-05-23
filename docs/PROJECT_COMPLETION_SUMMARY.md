@@ -213,11 +213,16 @@
 - CSV导出功能
 - 多维度过滤器
 
-**技术栈**:
+**当前技术栈**:
 - Chart.js 4.4.0 (图表)
 - Axios 1.6.0 (HTTP客户端)
 - 纯前端实现 (无需构建工具)
 - 模块化设计 (5个JS模块)
+
+**后续建议技术栈**:
+- React + Vite + TypeScript
+- ECharts 或 Recharts 用于趋势图和报表图
+- 将筛选区、指标卡、趋势图、日报/小时表格拆成组件
 
 **用户体验**:
 - 加载动画
@@ -348,19 +353,20 @@ hdfs://node1:9000/lake/
 
 ### 6.1 数据完整性
 
-⚠️ **Bronze层数据限制**:
-- 当前只有温度数据 (supply_temp)
-- 缺少压力、流量、功率等字段
-- 导致Silver/Gold层部分字段为NULL
+⚠️ **当前数据限制**:
+- 冷机出水温度、回水温度、压力、流量、运行状态已经能进入 Silver 宽表。
+- 目前没有明确的冷机实测功率点位，`power` 使用水侧冷量和固定 COP=3.0 估算。
+- Gold 层能耗、COP、成本和净利润已经有部分结果，但属于估算口径。
 
 **影响范围**:
-- silver_chiller_status: pressure, flow, power字段为NULL
-- gold_supply_curve_hourly: 能耗和供冷量计算基于假设值
-- gold_report_daily: 经济指标计算基于假设值
+- silver_chiller_status: `power` 不是实测值，只有满足流量、温差、运行状态条件时才回填。
+- gold_supply_curve_hourly: `avg_power`、`energy_consumption_kwh`、`cooling_supply_kwh` 需要标注估算来源。
+- gold_report_daily: `avg_cop`、`energy_cost`、`cooling_revenue`、`net_profit` 可展示，但不应描述成实测结论。
 
 **解决方案**:
-- 待完整数据接入后，重新运行Silver和Gold层脚本
-- 脚本已实现NULL值处理，数据接入后自动填充
+- 后续优先补充冷机实测功率点位或设备额定参数表。
+- 如果补到真实功率，应让真实 `measure_role=power` 覆盖当前估算值。
+- 前端和答辩材料需要明确说明 COP=3.0 是当前估算假设。
 
 ### 6.2 系统限制
 

@@ -11,6 +11,8 @@ from pyspark.sql.functions import (
     min as spark_min, count, current_timestamp, to_timestamp, when, lit
 )
 
+ESTIMATED_CHILLER_COP = 3.0
+
 def create_spark_session():
     """创建 Spark Session"""
     spark = (
@@ -118,7 +120,7 @@ def main():
     )
 
     # 计算制冷量（kW）：优先使用水侧公式 Q = 1.163 * flow * ΔT。
-    # power 仍为空时，供冷量可以先由回水/出水温差和流量计算；能耗和COP仍依赖功率。
+    # 若水侧条件不满足但功率可用，则用固定 COP=3.0 回退估算。
     df_hourly = df_hourly.withColumn(
         "cooling_capacity_kw",
         when(
@@ -129,7 +131,7 @@ def main():
             lit(1.163) * col("avg_flow") * (col("avg_return_temp") - col("avg_supply_temp"))
         ).when(
             col("avg_power").isNotNull(),
-            col("avg_power") * 3.0
+            col("avg_power") * ESTIMATED_CHILLER_COP
         )
     )
 

@@ -83,8 +83,8 @@ const TableManager = {
         noteRow.innerHTML = `
             <td colspan="7" style="background-color: #fff3cd; padding: 10px; text-align: left; font-size: 0.9em;">
                 <strong>📝 数据说明：</strong>当前冷机历史数据已有出回水温度、流量和运行状态，
-                但功率字段仍缺失，因此能耗、COP、成本和收益等依赖功率的指标暂时无法显示。
-                完整数据接入后，这些指标将自动计算并显示。
+                功率字段已按冷量和固定 COP 进行估算，因此能耗、COP、成本和收益等指标可以展示，
+                但需要注意这些结果并非实测功率口径。
             </td>
         `;
         tbody.appendChild(noteRow);

@@ -92,6 +92,7 @@ def main() -> int:
             and summary["chiller_nonnull"]["return_temp"] > 0
             and summary["chiller_nonnull"]["pressure"] > 0
             and summary["chiller_nonnull"]["flow"] > 0
+            and summary["chiller_nonnull"]["power"] > 0
             and summary["chiller_nonnull"]["run_flag"] > 0
         )
         return 0 if ok else 1

@@ -10,6 +10,9 @@ from pyspark.sql.functions import (
     col, when, max as spark_max, count, current_timestamp, date_format
 )
 
+COOLING_CAPACITY_FACTOR = 1.163
+ESTIMATED_CHILLER_COP = 3.0
+
 def create_spark_session():
     """创建 Spark Session"""
     spark = (
@@ -119,6 +122,27 @@ def main():
         "pressure",
         when(col("pressure").isNotNull(), col("pressure")).otherwise(col("header_pressure"))
     ).drop("header_pressure")
+
+    # 当前数据没有真实冷机功率点位。保留真实 power 优先级；缺失时按水侧冷量
+    # Q = 1.163 * flow * (return_temp - supply_temp)，再用 COP=3.0 反推估算功率。
+    estimated_power = (
+        COOLING_CAPACITY_FACTOR
+        * col("flow")
+        * (col("return_temp") - col("supply_temp"))
+        / ESTIMATED_CHILLER_COP
+    )
+    df_status = df_status.withColumn(
+        "power",
+        when(col("power").isNotNull(), col("power")).when(
+            (col("run_flag") > 0)
+            & col("flow").isNotNull()
+            & col("supply_temp").isNotNull()
+            & col("return_temp").isNotNull()
+            & (col("flow") > 0)
+            & ((col("return_temp") - col("supply_temp")) > 0),
+            estimated_power
+        )
+    )
 
     # 5. 添加派生字段
     print("\n➕ 步骤 5: 添加派生字段...")

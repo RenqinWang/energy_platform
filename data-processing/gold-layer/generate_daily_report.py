@@ -8,8 +8,9 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
     col, to_date, sum as spark_sum, avg, max as spark_max,
-    min as spark_min, count, current_timestamp
+    min as spark_min, count, current_timestamp, when, lit, coalesce
 )
+from pyspark.sql.window import Window
 
 def create_spark_session():
     """创建 Spark Session"""
@@ -66,11 +67,18 @@ def main():
         spark_max(col("max_supply_temp")).alias("max_supply_temp"),
         spark_min(col("min_supply_temp")).alias("min_supply_temp"),
 
-        # 能耗统计（kWh）
-        spark_sum(col("energy_consumption_kwh")).alias("total_energy_consumption_kwh"),
+        # 能耗统计（kWh）。运行中但功率缺失的小时单独标记，避免汇总时悄悄低估。
+        spark_sum(col("energy_consumption_kwh")).alias("raw_total_energy_consumption_kwh"),
+        count(when((col("runtime_hours") > 0) & col("energy_consumption_kwh").isNull(), 1))
+            .alias("missing_running_energy_hours"),
 
         # 供冷统计（kWh）
-        spark_sum(col("cooling_supply_kwh")).alias("total_cooling_supply_kwh"),
+        spark_max(col("cooling_supply_kwh")).alias("peak_cooling_kwh"),
+        spark_min(when(col("cooling_supply_kwh") > 0, col("cooling_supply_kwh"))).alias("valley_cooling_kwh"),
+        spark_sum(col("cooling_supply_kwh")).alias("raw_total_cooling_supply_kwh"),
+        avg(col("cooling_supply_kwh")).alias("avg_cooling_supply_kwh"),
+        count(when((col("runtime_hours") > 0) & col("cooling_supply_kwh").isNull(), 1))
+            .alias("missing_running_cooling_hours"),
 
         # 运行统计
         spark_sum(col("runtime_hours")).alias("total_runtime_hours"),  # 累加每小时的运行时长
@@ -85,6 +93,16 @@ def main():
     # 5. 计算派生指标
     print("\n➕ 步骤 5: 计算派生指标...")
 
+    df_daily = df_daily.withColumn(
+        "total_energy_consumption_kwh",
+        when(col("missing_running_energy_hours") > 0, lit(None).cast("double"))
+        .otherwise(coalesce(col("raw_total_energy_consumption_kwh"), lit(0.0)))
+    ).withColumn(
+        "total_cooling_supply_kwh",
+        when(col("missing_running_cooling_hours") > 0, lit(None).cast("double"))
+        .otherwise(coalesce(col("raw_total_cooling_supply_kwh"), lit(0.0)))
+    )
+
     # 日运行率（%）= 运行分钟数 / (24 * 60)
     df_daily = df_daily.withColumn(
         "daily_operation_rate",
@@ -94,7 +112,43 @@ def main():
     # 平均COP（能效比）= 供冷量 / 能耗
     df_daily = df_daily.withColumn(
         "avg_cop",
-        col("total_cooling_supply_kwh") / col("total_energy_consumption_kwh")
+        when(col("total_energy_consumption_kwh") > 0,
+             col("total_cooling_supply_kwh") / col("total_energy_consumption_kwh"))
+    )
+
+    # 峰谷比
+    df_daily = df_daily.withColumn(
+        "peak_valley_ratio",
+        when(col("valley_cooling_kwh") > 0,
+             col("peak_cooling_kwh") / col("valley_cooling_kwh")).otherwise(0)
+    )
+
+    # 峰值期/谷值期时长：按同设备同日平均供冷量作为动态阈值。
+    daily_window = Window.partitionBy("station_id", "equipment_id", "stat_date")
+    df_peak_valley_duration = df_hourly \
+        .withColumn("daily_avg_cooling", avg("cooling_supply_kwh").over(daily_window)) \
+        .withColumn(
+            "is_peak_period",
+            when(col("cooling_supply_kwh") > col("daily_avg_cooling") * 1.2, 1).otherwise(0)
+        ) \
+        .withColumn(
+            "is_valley_period",
+            when(
+                (col("cooling_supply_kwh") < col("daily_avg_cooling") * 0.8)
+                & (col("cooling_supply_kwh") > 0),
+                1
+            ).otherwise(0)
+        ) \
+        .groupBy("station_id", "equipment_id", "stat_date", "dt") \
+        .agg(
+            spark_sum("is_peak_period").alias("peak_duration_hours"),
+            spark_sum("is_valley_period").alias("valley_duration_hours")
+        )
+
+    df_daily = df_daily.join(
+        df_peak_valley_duration,
+        on=["station_id", "equipment_id", "stat_date", "dt"],
+        how="left"
     )
 
     # 6. 关联价格数据（简化版：使用固定价格）
@@ -138,6 +192,12 @@ def main():
         "station_id",
         "equipment_id",
         "stat_date",
+        # 峰谷指标
+        "peak_cooling_kwh",
+        "valley_cooling_kwh",
+        "peak_valley_ratio",
+        "peak_duration_hours",
+        "valley_duration_hours",
         # 温度指标
         "avg_supply_temp",
         "max_supply_temp",
@@ -146,6 +206,7 @@ def main():
         "total_energy_consumption_kwh",
         # 供冷指标
         "total_cooling_supply_kwh",
+        "avg_cooling_supply_kwh",
         # 运行指标
         "total_runtime_hours",  # 该日的实际运行时长（小时）
         "cumulative_runtime_hours",  # 累计运行时长

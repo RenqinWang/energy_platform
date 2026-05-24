@@ -59,7 +59,7 @@ Use the provided startup script:
 ./start_api.sh
 ```
 
-The API server will start on `http://0.0.0.0:8000`
+The API server will start on `http://0.0.0.0:8001`
 
 ### Manual Start
 
@@ -67,14 +67,14 @@ The API server will start on `http://0.0.0.0:8000`
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 export SPARK_HOME=/home/student/spark-3.5.7-bin-hadoop3
 source venv/bin/activate
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 ```
 
 ### Access API Documentation
 
 Once the server is running, access the interactive API documentation:
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
+- Swagger UI: http://localhost:8001/docs
+- ReDoc: http://localhost:8001/redoc
 
 ## API Endpoints
 
@@ -120,7 +120,7 @@ Query hourly supply curve data from `gold_supply_curve_hourly` table.
 
 **Example:**
 ```bash
-curl "http://localhost:8000/api/supply-curve?equipment_id=LJ001&limit=10"
+curl "http://localhost:8001/api/supply-curve?equipment_id=LJ001&limit=10"
 ```
 
 #### 2. Daily Report
@@ -153,7 +153,7 @@ Query daily report data from `gold_report_daily` table.
 
 **Example:**
 ```bash
-curl "http://localhost:8000/api/daily-report?start_date=2024-01-01&end_date=2024-01-31"
+curl "http://localhost:8001/api/daily-report?start_date=2024-01-01&end_date=2024-01-31"
 ```
 
 #### 3. Equipment Status (Minute-level)
@@ -185,7 +185,7 @@ Query minute-level equipment status from `silver_chiller_status` table.
 
 **Example:**
 ```bash
-curl "http://localhost:8000/api/equipment-status?equipment_id=LJ001&limit=100"
+curl "http://localhost:8001/api/equipment-status?equipment_id=LJ001&limit=100"
 ```
 
 ## Testing

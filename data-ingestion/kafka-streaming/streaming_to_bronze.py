@@ -18,8 +18,8 @@ from pyspark.sql.functions import (
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, BooleanType, TimestampType
 
 DEFAULT_KAFKA_BOOTSTRAP = "192.168.1.87:9092,192.168.1.19:9092"
-DEFAULT_OUTPUT_PATH = "hdfs://node1:9000/lake/bronze/bronze_sensor_kafka"
-DEFAULT_CHECKPOINT_PATH = "hdfs://node1:9000/checkpoints/kafka_to_bronze_kafka_table"
+DEFAULT_OUTPUT_PATH = "hdfs://node1:9000/lake/stream/bronze/bronze_streaming"
+DEFAULT_CHECKPOINT_PATH = "hdfs://node1:9000/checkpoints/stream/kafka_to_bronze_streaming"
 
 
 def create_spark_session(master: str):

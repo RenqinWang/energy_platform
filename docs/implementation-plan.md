@@ -286,7 +286,7 @@ energy-platform/
 
 **部署**：
 - 端口：8000
-- 启动命令：`uvicorn main:app --host 0.0.0.0 --port 8000`
+- 启动命令：`uvicorn main:app --host 0.0.0.0 --port 8001`
 
 ### 阶段 6：前端展示实现（3-4天）
 
@@ -748,7 +748,7 @@ services:
 - [ ] 运行建议生成（`gold_operation_advice` 表有建议记录）
 
 ### 阶段 5 验证
-- [ ] Backend API 启动成功（`curl http://node-1:8000/docs` 返回 Swagger 文档）
+- [ ] Backend API 启动成功（`curl http://node-1:8001/docs` 返回 Swagger 文档）
 - [ ] 设备级查询 API 正常（返回历史数据）
 - [ ] 报表查询 API 正常（返回日报表数据）
 - [ ] 预测查询 API 正常（返回预测曲线）

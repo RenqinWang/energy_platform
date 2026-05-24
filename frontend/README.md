@@ -45,7 +45,7 @@ frontend/
 
 ## Prerequisites
 
-- Backend API server running on `http://localhost:8000`
+- Backend API server running on `http://localhost:8001`
 - Modern web browser (Chrome, Firefox, Safari, Edge)
 
 ## Installation
@@ -87,7 +87,7 @@ cd /home/student/energy-platform/backend
 ./start_api.sh
 ```
 
-The API should be accessible at http://localhost:8000
+The API should be accessible at http://localhost:8001
 
 ### 2. Open the Frontend
 
@@ -135,7 +135,7 @@ To change the API endpoint, edit `js/config.js`:
 
 ```javascript
 const API_CONFIG = {
-    baseURL: 'http://localhost:8000',  // Change this to your API URL
+    baseURL: 'http://localhost:8001',  // Change this to your API URL
     // ...
 };
 ```
@@ -170,7 +170,7 @@ setDefaultDateRange() {
 **Cause**: Backend API is not running or not accessible.
 
 **Solution**:
-1. Check if the backend API is running: `curl http://localhost:8000/health`
+1. Check if the backend API is running: `curl http://localhost:8001/health`
 2. Start the backend API: `cd /home/student/energy-platform/backend && ./start_api.sh`
 3. Verify the API URL in `js/config.js` matches your backend
 

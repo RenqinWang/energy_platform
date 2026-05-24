@@ -437,7 +437,7 @@ python3 -m http.server 8080
 
 **6. 访问系统**:
 - 前端界面: http://localhost:8080
-- API文档: http://localhost:8000/docs
+- API文档: http://localhost:8001/docs
 - Spark UI: http://node2:8080
 
 ### 7.3 数据处理流程

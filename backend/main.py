@@ -20,7 +20,7 @@ class SupplyCurveRecord(BaseModel):
     max_supply_temp: Optional[float]
     min_supply_temp: Optional[float]
     avg_power: Optional[float]
-    run_minutes: Optional[int]
+    run_minutes: Optional[float]
     energy_consumption_kwh: Optional[float]
     cooling_capacity_kw: Optional[float]
     cooling_supply_kwh: Optional[float]
@@ -33,10 +33,17 @@ class DailyReportRecord(BaseModel):
     station_id: str
     equipment_id: str
     stat_date: str
+    peak_cooling_kwh: Optional[float]
+    valley_cooling_kwh: Optional[float]
+    peak_valley_ratio: Optional[float]
+    peak_duration_hours: Optional[float]
+    valley_duration_hours: Optional[float]
     avg_supply_temp: Optional[float]
     total_energy_consumption_kwh: Optional[float]
     total_cooling_supply_kwh: Optional[float]
-    total_run_minutes: Optional[int]
+    total_runtime_hours: Optional[float]
+    avg_cooling_supply_kwh: Optional[float]
+    total_run_minutes: Optional[float]
     daily_operation_rate: Optional[float]
     avg_cop: Optional[float]
     energy_cost: Optional[float]
@@ -74,6 +81,133 @@ class StationListResponse(BaseModel):
 
 class EquipmentListResponse(BaseModel):
     equipment: List[str]
+
+
+class ForecastRecord(BaseModel):
+    station_id: str
+    equipment_id: str
+    forecast_time: str
+    target_hour: str
+    predicted_cooling_kwh: float
+    confidence_lower: float
+    confidence_upper: float
+    model_version: str
+    dt: Optional[str]
+
+
+class AdviceRecord(BaseModel):
+    station_id: str
+    equipment_id: str
+    advice_time: str
+    advice_type: str
+    risk_level: str
+    advice_text: str
+    evidence_metrics: str
+    rule_id: str
+    is_active: bool
+    dt: Optional[str]
+
+
+class WeeklyReportRecord(BaseModel):
+    station_id: str
+    equipment_id: str
+    stat_week_str: str
+    week_start_date: str
+    week_end_date: str
+    peak_cooling_kwh: Optional[float]
+    valley_cooling_kwh: Optional[float]
+    peak_valley_ratio: Optional[float]
+    peak_duration_hours: Optional[float]
+    valley_duration_hours: Optional[float]
+    total_cooling_supply_kwh: Optional[float]
+    total_energy_consumption_kwh: Optional[float]
+    total_runtime_hours: Optional[float]
+    avg_cooling_supply_kwh: Optional[float]
+    avg_cop: Optional[float]
+    avg_supply_temp: Optional[float]
+    equipment_utilization_rate: Optional[float]
+    load_factor: Optional[float]
+    total_energy_cost: Optional[float]
+    total_cooling_revenue: Optional[float]
+    net_profit: Optional[float]
+    data_completeness_rate: Optional[float]
+    hour_count: Optional[int]
+    dt: Optional[str]
+
+
+class MonthlyReportRecord(BaseModel):
+    station_id: str
+    equipment_id: str
+    stat_month_str: str
+    month_start_date: str
+    month_end_date: str
+    days_in_month: Optional[int]
+    peak_cooling_kwh: Optional[float]
+    valley_cooling_kwh: Optional[float]
+    peak_valley_ratio: Optional[float]
+    peak_duration_hours: Optional[float]
+    valley_duration_hours: Optional[float]
+    total_cooling_supply_kwh: Optional[float]
+    total_energy_consumption_kwh: Optional[float]
+    total_runtime_hours: Optional[float]
+    avg_cooling_supply_kwh: Optional[float]
+    avg_cop: Optional[float]
+    avg_supply_temp: Optional[float]
+    equipment_utilization_rate: Optional[float]
+    load_factor: Optional[float]
+    total_energy_cost: Optional[float]
+    total_cooling_revenue: Optional[float]
+    net_profit: Optional[float]
+    data_completeness_rate: Optional[float]
+    hour_count: Optional[int]
+    dt: Optional[str]
+
+
+class RevenueForecastRecord(BaseModel):
+    station_id: str
+    equipment_id: str
+    forecast_date: str
+    target_hour: str
+    forecast_hour: Optional[int]
+    predicted_cooling_kwh: Optional[float]
+    predicted_energy_kwh: Optional[float]
+    energy_price: Optional[float]
+    cooling_price: Optional[float]
+    predicted_energy_cost: Optional[float]
+    predicted_cooling_revenue: Optional[float]
+    predicted_profit: Optional[float]
+    profit_margin: Optional[float]
+    model_version: Optional[str]
+    dt: Optional[str]
+
+
+class DataQualityRecord(BaseModel):
+    station_id: str
+    equipment_id: str
+    stat_date: str
+    total_records: Optional[int]
+    expected_records: Optional[int]
+    running_records: Optional[int] = None
+    missing_running_power_records: Optional[int] = None
+    missing_running_energy_records: Optional[int] = None
+    missing_running_cooling_records: Optional[int] = None
+    missing_records: Optional[int]
+    completeness_rate: Optional[float]
+    supply_temp_valid_rate: Optional[float]
+    power_valid_rate: Optional[float]
+    energy_valid_rate: Optional[float]
+    cooling_capacity_valid_rate: Optional[float]
+    cooling_supply_valid_rate: Optional[float]
+    avg_field_valid_rate: Optional[float]
+    null_field_count: Optional[int]
+    zero_supply_temp: Optional[int]
+    zero_power: Optional[int]
+    zero_energy: Optional[int]
+    zero_cooling_supply: Optional[int]
+    total_run_minutes: Optional[float]
+    data_quality_score: Optional[float]
+    quality_flag: Optional[str]
+    dt: Optional[str]
 
 
 # Initialize FastAPI app
@@ -133,6 +267,170 @@ async def get_equipment(
         return {"equipment": equipment}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to query equipment: {str(e)}")
+
+
+@app.get("/api/system-equipment", response_model=EquipmentListResponse)
+async def get_system_equipment(
+    system_type: Optional[str] = Query(None, description="Filter by system type: chiller/heating/cchp"),
+    station_id: Optional[str] = Query(None, description="Filter by station ID")
+):
+    """Get equipment IDs from unified system Gold reports."""
+    try:
+        equipment = dal.get_system_equipment_list(system_type=system_type, station_id=station_id)
+        return {"equipment": equipment}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to query system equipment: {str(e)}")
+
+
+@app.get("/api/system-supply-curve", response_model=List[Dict[str, Any]])
+async def get_system_supply_curve(
+    system_type: Optional[str] = Query(None, description="Filter by system type: chiller/heating/cchp"),
+    station_id: Optional[str] = Query(None, description="Filter by station ID"),
+    equipment_id: Optional[str] = Query(None, description="Filter by equipment ID"),
+    start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
+    limit: int = Query(1000, ge=1, le=10000, description="Maximum number of records")
+):
+    """Query unified hourly Gold data for cold, heat, and CCHP systems."""
+    try:
+        return dal.query_system_supply_curve(
+            system_type=system_type,
+            station_id=station_id,
+            equipment_id=equipment_id,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to query system supply curve: {str(e)}")
+
+
+@app.get("/api/system-daily-report", response_model=List[Dict[str, Any]])
+async def get_system_daily_report(
+    system_type: Optional[str] = Query(None, description="Filter by system type: chiller/heating/cchp"),
+    station_id: Optional[str] = Query(None, description="Filter by station ID"),
+    equipment_id: Optional[str] = Query(None, description="Filter by equipment ID"),
+    start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
+    limit: int = Query(1000, ge=1, le=10000, description="Maximum number of records")
+):
+    """Query unified daily comprehensive report."""
+    try:
+        return dal.query_system_daily_report(
+            system_type=system_type,
+            station_id=station_id,
+            equipment_id=equipment_id,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to query system daily report: {str(e)}")
+
+
+@app.get("/api/system-weekly-report", response_model=List[Dict[str, Any]])
+async def get_system_weekly_report(
+    system_type: Optional[str] = Query(None, description="Filter by system type: chiller/heating/cchp"),
+    station_id: Optional[str] = Query(None, description="Filter by station ID"),
+    equipment_id: Optional[str] = Query(None, description="Filter by equipment ID"),
+    start_week: Optional[str] = Query(None, description="Start week (format: 2018-W30)"),
+    end_week: Optional[str] = Query(None, description="End week (format: 2018-W35)"),
+    limit: int = Query(1000, ge=1, le=10000, description="Maximum number of records")
+):
+    """Query unified weekly comprehensive report."""
+    try:
+        return dal.query_system_weekly_report(
+            system_type=system_type,
+            station_id=station_id,
+            equipment_id=equipment_id,
+            start_week=start_week,
+            end_week=end_week,
+            limit=limit
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to query system weekly report: {str(e)}")
+
+
+@app.get("/api/system-monthly-report", response_model=List[Dict[str, Any]])
+async def get_system_monthly_report(
+    system_type: Optional[str] = Query(None, description="Filter by system type: chiller/heating/cchp"),
+    station_id: Optional[str] = Query(None, description="Filter by station ID"),
+    equipment_id: Optional[str] = Query(None, description="Filter by equipment ID"),
+    start_month: Optional[str] = Query(None, description="Start month (format: 2018-07)"),
+    end_month: Optional[str] = Query(None, description="End month (format: 2018-09)"),
+    limit: int = Query(1000, ge=1, le=10000, description="Maximum number of records")
+):
+    """Query unified monthly comprehensive report."""
+    try:
+        return dal.query_system_monthly_report(
+            system_type=system_type,
+            station_id=station_id,
+            equipment_id=equipment_id,
+            start_month=start_month,
+            end_month=end_month,
+            limit=limit
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to query system monthly report: {str(e)}")
+
+
+@app.get("/api/system-forecast", response_model=List[Dict[str, Any]])
+async def get_system_forecast(
+    system_type: Optional[str] = Query(None, description="Filter by system type: chiller/heating/cchp"),
+    station_id: Optional[str] = Query(None, description="Filter by station ID"),
+    equipment_id: Optional[str] = Query(None, description="Filter by equipment ID"),
+    limit: int = Query(1000, ge=1, le=10000, description="Maximum number of records")
+):
+    """Query unified 24-hour supply forecast data."""
+    try:
+        return dal.query_system_forecast(
+            system_type=system_type,
+            station_id=station_id,
+            equipment_id=equipment_id,
+            limit=limit
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to query system forecast: {str(e)}")
+
+
+@app.get("/api/system-forecast-metrics", response_model=List[Dict[str, Any]])
+async def get_system_forecast_metrics(
+    system_type: Optional[str] = Query(None, description="Filter by system type: chiller/heating/cchp"),
+    station_id: Optional[str] = Query(None, description="Filter by station ID"),
+    equipment_id: Optional[str] = Query(None, description="Filter by equipment ID"),
+    limit: int = Query(1000, ge=1, le=10000, description="Maximum number of records")
+):
+    """Query model explanation and evaluation metrics for unified forecasts."""
+    try:
+        return dal.query_system_forecast_metrics(
+            system_type=system_type,
+            station_id=station_id,
+            equipment_id=equipment_id,
+            limit=limit
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to query system forecast metrics: {str(e)}")
+
+
+@app.get("/api/system-revenue-forecast", response_model=List[Dict[str, Any]])
+async def get_system_revenue_forecast(
+    system_type: Optional[str] = Query(None, description="Filter by system type: chiller/heating/cchp"),
+    station_id: Optional[str] = Query(None, description="Filter by station ID"),
+    equipment_id: Optional[str] = Query(None, description="Filter by equipment ID"),
+    forecast_date: Optional[str] = Query(None, description="Forecast date (YYYY-MM-DD)"),
+    limit: int = Query(1000, ge=1, le=10000, description="Maximum number of records")
+):
+    """Query unified revenue forecast data."""
+    try:
+        return dal.query_system_revenue_forecast(
+            system_type=system_type,
+            station_id=station_id,
+            equipment_id=equipment_id,
+            forecast_date=forecast_date,
+            limit=limit
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to query system revenue forecast: {str(e)}")
 
 
 @app.get("/api/supply-curve", response_model=List[SupplyCurveRecord])
@@ -224,6 +522,187 @@ async def get_equipment_status(
         return data
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to query equipment status: {str(e)}")
+
+
+@app.get("/api/forecast", response_model=List[ForecastRecord])
+async def get_forecast(
+    station_id: Optional[str] = Query(None, description="Filter by station ID"),
+    equipment_id: Optional[str] = Query(None, description="Filter by equipment ID"),
+    hours: int = Query(24, ge=1, le=168, description="Number of hours to forecast"),
+    limit: int = Query(1000, ge=1, le=10000, description="Maximum number of records")
+):
+    """
+    Query forecast data
+
+    Returns predicted cooling supply for future hours including:
+    - Predicted cooling supply (kWh)
+    - Confidence interval (lower and upper bounds)
+    - Model version
+    """
+    try:
+        data = dal.query_forecast(
+            station_id=station_id,
+            equipment_id=equipment_id,
+            hours=hours,
+            limit=limit
+        )
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to query forecast: {str(e)}")
+
+
+@app.get("/api/advice", response_model=List[AdviceRecord])
+async def get_advice(
+    station_id: Optional[str] = Query(None, description="Filter by station ID"),
+    equipment_id: Optional[str] = Query(None, description="Filter by equipment ID"),
+    risk_level: Optional[str] = Query(None, description="Filter by risk level (low, medium, high)"),
+    advice_type: Optional[str] = Query(None, description="Filter by advice type (load_change, anomaly, efficiency, economic)"),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum number of records")
+):
+    """
+    Query operation advice data
+
+    Returns operation recommendations including:
+    - Advice text (Chinese description)
+    - Risk level (low, medium, high)
+    - Advice type (load_change, anomaly, efficiency, economic)
+    - Evidence metrics (JSON format)
+    """
+    try:
+        data = dal.query_advice(
+            station_id=station_id,
+            equipment_id=equipment_id,
+            risk_level=risk_level,
+            advice_type=advice_type,
+            limit=limit
+        )
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to query advice: {str(e)}")
+
+
+@app.get("/api/weekly-report", response_model=List[WeeklyReportRecord])
+async def get_weekly_report(
+    station_id: Optional[str] = Query(None, description="Filter by station ID"),
+    equipment_id: Optional[str] = Query(None, description="Filter by equipment ID"),
+    start_week: Optional[str] = Query(None, description="Start week (format: 2018-W30)"),
+    end_week: Optional[str] = Query(None, description="End week (format: 2018-W35)"),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum number of records")
+):
+    """
+    Query weekly report data
+
+    Returns weekly aggregated data including:
+    - Peak and valley cooling values
+    - Peak/valley duration hours
+    - Total cooling supply and energy consumption
+    - Equipment utilization rate and load factor
+    - Economic metrics (cost, revenue, profit)
+    - Data completeness rate
+    """
+    try:
+        data = dal.query_weekly_report(
+            station_id=station_id,
+            equipment_id=equipment_id,
+            start_week=start_week,
+            end_week=end_week,
+            limit=limit
+        )
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to query weekly report: {str(e)}")
+
+
+@app.get("/api/monthly-report", response_model=List[MonthlyReportRecord])
+async def get_monthly_report(
+    station_id: Optional[str] = Query(None, description="Filter by station ID"),
+    equipment_id: Optional[str] = Query(None, description="Filter by equipment ID"),
+    start_month: Optional[str] = Query(None, description="Start month (format: 2018-07)"),
+    end_month: Optional[str] = Query(None, description="End month (format: 2018-09)"),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum number of records")
+):
+    """
+    Query monthly report data
+
+    Returns monthly aggregated data including:
+    - Peak and valley cooling values
+    - Peak/valley duration hours
+    - Total cooling supply and energy consumption
+    - Equipment utilization rate and load factor
+    - Economic metrics (cost, revenue, profit)
+    - Data completeness rate
+    """
+    try:
+        data = dal.query_monthly_report(
+            station_id=station_id,
+            equipment_id=equipment_id,
+            start_month=start_month,
+            end_month=end_month,
+            limit=limit
+        )
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to query monthly report: {str(e)}")
+
+
+@app.get("/api/revenue-forecast", response_model=List[RevenueForecastRecord])
+async def get_revenue_forecast(
+    station_id: Optional[str] = Query(None, description="Filter by station ID"),
+    equipment_id: Optional[str] = Query(None, description="Filter by equipment ID"),
+    forecast_date: Optional[str] = Query(None, description="Forecast date (YYYY-MM-DD)"),
+    limit: int = Query(1000, ge=1, le=10000, description="Maximum number of records")
+):
+    """
+    Query revenue forecast data
+
+    Returns revenue predictions including:
+    - Predicted cooling supply and energy consumption
+    - Energy price (time-of-use pricing)
+    - Predicted costs and revenue
+    - Predicted profit and profit margin
+    """
+    try:
+        data = dal.query_revenue_forecast(
+            station_id=station_id,
+            equipment_id=equipment_id,
+            forecast_date=forecast_date,
+            limit=limit
+        )
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to query revenue forecast: {str(e)}")
+
+
+@app.get("/api/data-quality", response_model=List[DataQualityRecord])
+async def get_data_quality(
+    station_id: Optional[str] = Query(None, description="Filter by station ID"),
+    equipment_id: Optional[str] = Query(None, description="Filter by equipment ID"),
+    start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
+    quality_flag: Optional[str] = Query(None, description="Filter by quality flag (good, warning, poor)"),
+    limit: int = Query(1000, ge=1, le=10000, description="Maximum number of records")
+):
+    """
+    Query data quality scores
+
+    Returns data quality metrics including:
+    - Completeness rate
+    - Field validity rates
+    - Quality score (0-100)
+    - Quality flag (good/warning/poor)
+    """
+    try:
+        data = dal.query_data_quality(
+            station_id=station_id,
+            equipment_id=equipment_id,
+            start_date=start_date,
+            end_date=end_date,
+            quality_flag=quality_flag,
+            limit=limit
+        )
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to query data quality: {str(e)}")
 
 
 @app.on_event("shutdown")

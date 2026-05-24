@@ -63,6 +63,12 @@ def main():
         date_format(col("stat_timestamp"), "yyyy-MM-dd HH:00:00")
     )
 
+    # run_flag 原始数据中存在少量 -1 / NULL，这里统一按非运行处理。
+    df_status = df_status.withColumn(
+        "run_flag_clean",
+        when(col("run_flag") > 0, lit(1)).otherwise(lit(0))
+    )
+
     print("   ✅ 时间窗口生成完成")
 
     # 4. 按小时聚合统计
@@ -97,8 +103,8 @@ def main():
         # 启动次数
         spark_max(col("start_count")).alias("start_count"),
 
-        # 运行分钟数（该小时内运行状态为1的分钟数，0-60之间）
-        spark_sum(col("run_flag")).alias("run_minutes"),
+        # 运行采样数（该小时内运行状态为1的样本数）
+        spark_sum(col("run_flag_clean")).alias("running_sample_count"),
 
         # 记录数（用于质量检查）
         count("*").alias("record_count")
@@ -107,23 +113,38 @@ def main():
     # 5. 计算派生指标
     print("\n➕ 步骤 4: 计算派生指标...")
 
-    # 计算该小时的实际运行时长（小时）= 运行分钟数 / 60
+    # 当前数据多数小时是 12 条采样（约 5 分钟粒度），不是 60 条分钟级采样。
+    # 因此运行率按运行采样数 / 实际采样数计算，再换算成小时和分钟。
     df_hourly = df_hourly.withColumn(
         "runtime_hours",
-        col("run_minutes") / 60.0
+        when(col("record_count") > 0,
+             col("running_sample_count") / col("record_count"))
+        .otherwise(lit(0.0))
+    )
+
+    df_hourly = df_hourly.withColumn(
+        "run_minutes",
+        col("runtime_hours") * 60.0
+    )
+
+    df_hourly = df_hourly.withColumn(
+        "operation_rate",
+        col("runtime_hours") * 100.0
     )
 
     # 计算能耗（kWh）= 平均功率 * 运行时长
+    # 非运行小时写 0；运行但功率缺失时保留 NULL，避免伪造 energy。
     df_hourly = df_hourly.withColumn(
         "energy_consumption_kwh",
-        col("avg_power") * col("runtime_hours")
+        when(col("runtime_hours") <= 0, lit(0.0))
+        .when(col("avg_power").isNotNull(), col("avg_power") * col("runtime_hours"))
     )
 
     # 计算制冷量（kW）：优先使用水侧公式 Q = 1.163 * flow * ΔT。
     # 若水侧条件不满足但功率可用，则用固定 COP=3.0 回退估算。
     df_hourly = df_hourly.withColumn(
         "cooling_capacity_kw",
-        when(
+        when(col("runtime_hours") <= 0, lit(0.0)).when(
             col("avg_flow").isNotNull()
             & col("avg_return_temp").isNotNull()
             & col("avg_supply_temp").isNotNull()
@@ -138,14 +159,8 @@ def main():
     # 计算供冷量（kWh）= 制冷量 * 运行时长
     df_hourly = df_hourly.withColumn(
         "cooling_supply_kwh",
-        col("cooling_capacity_kw") * col("runtime_hours")
-    )
-
-    # 计算运行率（%）= (运行分钟数 / 60) * 100
-    # 正常范围: 0% ~ 100%
-    df_hourly = df_hourly.withColumn(
-        "operation_rate",
-        (col("run_minutes") / 60.0) * 100.0
+        when(col("runtime_hours") <= 0, lit(0.0))
+        .when(col("cooling_capacity_kw").isNotNull(), col("cooling_capacity_kw") * col("runtime_hours"))
     )
 
     # 6. 添加元数据字段
@@ -184,7 +199,8 @@ def main():
         "runtime_hours",  # 该小时的实际运行时长（0-1小时）
         "cumulative_runtime_hours",  # 累计运行时长（从Silver层获取）
         "start_count",
-        "run_minutes",  # 该小时的运行分钟数（0-60分钟）
+        "running_sample_count",  # 该小时运行状态采样数
+        "run_minutes",  # 按采样比例估算的运行分钟数（0-60分钟）
         "operation_rate",  # 运行率（0-100%）
         # 质量指标
         "record_count",

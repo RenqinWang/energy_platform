@@ -467,14 +467,14 @@ step8_start_backend() {
     pip install -q -r requirements.txt
 
     log_info "后台启动API服务..."
-    nohup uvicorn main:app --host 0.0.0.0 --port 8000 > /tmp/backend_api.log 2>&1 &
+    nohup uvicorn main:app --host 0.0.0.0 --port 8001 > /tmp/backend_api.log 2>&1 &
     
     sleep 5
 
     log_info "验证API服务..."
-    if curl -s http://localhost:8000/health | grep -q "healthy"; then
+    if curl -s http://localhost:8001/health | grep -q "healthy"; then
         log_success "后端API服务启动成功"
-        log_info "API文档: http://localhost:8000/docs"
+        log_info "API文档: http://localhost:8001/docs"
     else
         log_error "后端API服务启动失败"
         log_error "查看日志: tail -f /tmp/backend_api.log"
@@ -556,8 +556,8 @@ step11_print_summary() {
     echo ""
     echo "📊 服务访问地址:"
     echo "  - 前端界面: http://localhost:8080"
-    echo "  - API文档:  http://localhost:8000/docs"
-    echo "  - API健康检查: http://localhost:8000/health"
+    echo "  - API文档:  http://localhost:8001/docs"
+    echo "  - API健康检查: http://localhost:8001/health"
     echo ""
     echo "🔧 管理界面:"
     echo "  - HDFS Web UI: http://node1:9870"
@@ -759,7 +759,7 @@ tail -f /tmp/backend_api.log
 **解决方案**:
 ```bash
 # 检查后端API状态
-curl http://localhost:8000/health
+curl http://localhost:8001/health
 
 # 检查端口监听
 netstat -tuln | grep 8000
@@ -770,7 +770,7 @@ tail -f /tmp/backend_api.log
 # 测试CORS
 curl -H "Origin: http://localhost:8080" \
      -H "Access-Control-Request-Method: GET" \
-     -X OPTIONS http://localhost:8000/api/stations
+     -X OPTIONS http://localhost:8001/api/stations
 ```
 
 #### 5. Kafka数据未流入
@@ -825,7 +825,7 @@ hdfs dfs -du -h hdfs://node1:9000/lake/
 
 **3. 检查API服务状态**:
 ```bash
-curl http://localhost:8000/health
+curl http://localhost:8001/health
 ```
 
 ### 定期维护

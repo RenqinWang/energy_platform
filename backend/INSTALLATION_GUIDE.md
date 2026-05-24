@@ -24,7 +24,7 @@ conda activate base
 pip install -r requirements.txt
 
 # 启动服务
-uvicorn main:app --host 0.0.0.0 --port 8000
+uvicorn main:app --host 0.0.0.0 --port 8001
 ```
 
 ### 使用国内镜像加速
@@ -64,7 +64,7 @@ conda activate base
 pip install -r requirements.txt
 
 # 启动服务
-uvicorn main:app --host 0.0.0.0 --port 8000
+uvicorn main:app --host 0.0.0.0 --port 8001
 ```
 
 ### 后续启动
@@ -76,7 +76,7 @@ cd /home/student/energy-platform/backend
 conda activate base
 
 # 直接启动（无需重新安装）
-uvicorn main:app --host 0.0.0.0 --port 8000
+uvicorn main:app --host 0.0.0.0 --port 8001
 ```
 
 ---
@@ -110,7 +110,7 @@ conda activate base
 pip install --no-index --find-links=./packages/ -r requirements.txt
 
 # 启动服务
-uvicorn main:app --host 0.0.0.0 --port 8000
+uvicorn main:app --host 0.0.0.0 --port 8001
 ```
 
 ---
@@ -205,9 +205,9 @@ python -c "import delta; print('Delta Lake OK')"
 
 # 测试API启动
 cd /home/student/energy-platform/backend
-uvicorn main:app --host 0.0.0.0 --port 8000 &
+uvicorn main:app --host 0.0.0.0 --port 8001 &
 sleep 5
-curl http://localhost:8000/health
+curl http://localhost:8001/health
 ```
 
 ---
@@ -371,7 +371,7 @@ source venv/bin/activate
 pip install --no-index --find-links=./packages/ -r requirements.txt
 
 # 启动服务
-uvicorn main:app --host 0.0.0.0 --port 8000
+uvicorn main:app --host 0.0.0.0 --port 8001
 ```
 
 ---
@@ -386,7 +386,7 @@ sudo pip3 install -r requirements.txt
 
 # 启动服务
 cd /home/student/energy-platform/backend
-uvicorn main:app --host 0.0.0.0 --port 8000
+uvicorn main:app --host 0.0.0.0 --port 8001
 ```
 
 **注意**: 不推荐此方案，因为可能与系统其他Python应用冲突。
@@ -497,9 +497,9 @@ python -c "import pyspark; print(pyspark.__version__)"
 python -c "import delta; print('Delta Lake OK')"
 
 # 测试API启动
-uvicorn main:app --host 0.0.0.0 --port 8000 &
+uvicorn main:app --host 0.0.0.0 --port 8001 &
 sleep 5
-curl http://localhost:8000/health
+curl http://localhost:8001/health
 ```
 
 ---

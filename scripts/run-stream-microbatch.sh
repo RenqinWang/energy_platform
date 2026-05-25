@@ -13,6 +13,7 @@ HDFS_CONTROL_PATH="${HDFS_CONTROL_PATH:-hdfs://node1:9000/lake/control}"
 SPARK_MASTER="${SPARK_MASTER:-local[*]}"
 SPARK_DRIVER_HOST="${SPARK_DRIVER_HOST:-192.168.0.94}"
 HDFS_REPLICATION="${HDFS_REPLICATION:-1}"
+STREAM_SETREP_ENABLED="${STREAM_SETREP_ENABLED:-false}"
 INTERVAL_SECONDS="${STREAM_MICROBATCH_INTERVAL_SECONDS:-300}"
 STATUS_FILE="${STREAM_MICROBATCH_STATUS_FILE:-/tmp/stream_silver_last_batch_rows}"
 LOCK_FILE="${STREAM_MICROBATCH_LOCK_FILE:-/tmp/stream_microbatch_loop.lock}"
@@ -26,9 +27,16 @@ export HDFS_CONTROL_PATH
 export SPARK_MASTER
 export SPARK_DRIVER_HOST
 export HDFS_REPLICATION
+export STREAM_SETREP_ENABLED
 export STREAM_MICROBATCH_STATUS_FILE="$STATUS_FILE"
-export PYSPARK_PYTHON="${PYSPARK_PYTHON:-/usr/bin/python3}"
-export PYSPARK_DRIVER_PYTHON="${PYSPARK_DRIVER_PYTHON:-/usr/bin/python3}"
+if [ "${PYSPARK_PYTHON:-}" = "" ] || [ "${PYSPARK_PYTHON:-}" = "python3" ]; then
+  PYSPARK_PYTHON="/usr/bin/python3"
+fi
+if [ "${PYSPARK_DRIVER_PYTHON:-}" = "" ] || [ "${PYSPARK_DRIVER_PYTHON:-}" = "python3" ]; then
+  PYSPARK_DRIVER_PYTHON="/usr/bin/python3"
+fi
+export PYSPARK_PYTHON
+export PYSPARK_DRIVER_PYTHON
 export PYTHONPATH="${SPARK_HOME}/python:${SPARK_HOME}/python/lib/py4j-0.10.9.7-src.zip:${PYTHONPATH:-}"
 
 exec 9>"$LOCK_FILE"
@@ -42,7 +50,7 @@ setrep_if_exists() {
   shift
   local path
 
-  if [ "$HDFS_REPLICATION" = "1" ]; then
+  if [ "$STREAM_SETREP_ENABLED" != "true" ] || [ "$HDFS_REPLICATION" = "1" ]; then
     return
   fi
 
@@ -82,6 +90,8 @@ run_once() {
     --master "$SPARK_MASTER" \
     --conf "spark.driver.host=${SPARK_DRIVER_HOST}" \
     --conf "spark.driver.bindAddress=0.0.0.0" \
+    --conf "spark.pyspark.python=${PYSPARK_PYTHON}" \
+    --conf "spark.pyspark.driver.python=${PYSPARK_DRIVER_PYTHON}" \
     --conf "spark.executorEnv.PYSPARK_PYTHON=${PYSPARK_PYTHON}" \
     --conf "spark.hadoop.dfs.replication=${HDFS_REPLICATION}" \
     --packages io.delta:delta-spark_2.12:3.2.0 \
@@ -123,6 +133,8 @@ run_once() {
     --master "$SPARK_MASTER" \
     --conf "spark.driver.host=${SPARK_DRIVER_HOST}" \
     --conf "spark.driver.bindAddress=0.0.0.0" \
+    --conf "spark.pyspark.python=${PYSPARK_PYTHON}" \
+    --conf "spark.pyspark.driver.python=${PYSPARK_DRIVER_PYTHON}" \
     --conf "spark.executorEnv.PYSPARK_PYTHON=${PYSPARK_PYTHON}" \
     --conf "spark.hadoop.dfs.replication=${HDFS_REPLICATION}" \
     --packages io.delta:delta-spark_2.12:3.2.0 \
@@ -133,6 +145,8 @@ run_once() {
     --master "$SPARK_MASTER" \
     --conf "spark.driver.host=${SPARK_DRIVER_HOST}" \
     --conf "spark.driver.bindAddress=0.0.0.0" \
+    --conf "spark.pyspark.python=${PYSPARK_PYTHON}" \
+    --conf "spark.pyspark.driver.python=${PYSPARK_DRIVER_PYTHON}" \
     --conf "spark.executorEnv.PYSPARK_PYTHON=${PYSPARK_PYTHON}" \
     --conf "spark.hadoop.dfs.replication=${HDFS_REPLICATION}" \
     --packages io.delta:delta-spark_2.12:3.2.0 \
@@ -143,6 +157,8 @@ run_once() {
     --master "$SPARK_MASTER" \
     --conf "spark.driver.host=${SPARK_DRIVER_HOST}" \
     --conf "spark.driver.bindAddress=0.0.0.0" \
+    --conf "spark.pyspark.python=${PYSPARK_PYTHON}" \
+    --conf "spark.pyspark.driver.python=${PYSPARK_DRIVER_PYTHON}" \
     --conf "spark.executorEnv.PYSPARK_PYTHON=${PYSPARK_PYTHON}" \
     --conf "spark.hadoop.dfs.replication=${HDFS_REPLICATION}" \
     --packages io.delta:delta-spark_2.12:3.2.0 \

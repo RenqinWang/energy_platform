@@ -20,6 +20,7 @@ PRODUCER_INTERVAL_MS="${KAFKA_PRODUCER_INTERVAL:-2000}"
 DURATION_SECONDS="${DURATION_SECONDS:-1800}"
 SAMPLE_INTERVAL_SECONDS="${SAMPLE_INTERVAL_SECONDS:-60}"
 MICROBATCH_INTERVAL_SECONDS="${STREAM_MICROBATCH_INTERVAL_SECONDS:-300}"
+STREAM_SETREP_ENABLED="${STREAM_SETREP_ENABLED:-false}"
 STREAM_TRIGGER="${STREAM_TRIGGER:-10 seconds}"
 MAX_OFFSETS_PER_TRIGGER="${KAFKA_MAX_OFFSETS_PER_TRIGGER:-15000}"
 STAMP="$(date '+%Y%m%d_%H%M%S')"
@@ -38,7 +39,7 @@ else
 fi
 
 export PROJECT_HOME SPARK_HOME HADOOP_HOME HADOOP_CONF_DIR JAVA_HOME SPARK_DRIVER_HOST
-export HDFS_REPLICATION
+export HDFS_REPLICATION STREAM_SETREP_ENABLED
 export PYSPARK_PYTHON="${PYSPARK_PYTHON:-/usr/bin/python3}"
 export PYSPARK_DRIVER_PYTHON="${PYSPARK_DRIVER_PYTHON:-/usr/bin/python3}"
 export PYTHONPATH="${SPARK_HOME}/python:${SPARK_HOME}/python/lib/py4j-0.10.9.7-src.zip:${PYTHONPATH:-}"
@@ -83,6 +84,7 @@ payload = {
     "stream_trigger": sys.argv[9],
     "max_offsets_per_trigger": int(sys.argv[10]),
     "hdfs_replication": int(__import__("os").environ.get("HDFS_REPLICATION", "1")),
+    "stream_setrep_enabled": __import__("os").environ.get("STREAM_SETREP_ENABLED", "false"),
     "hdfs_stream_root": "hdfs://node1:9000/lake/stream",
 }
 path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -162,6 +164,10 @@ start_hdfs_replication_loop() {
   if [ "$MODE" != "distributed" ]; then
     return
   fi
+  if [ "$STREAM_SETREP_ENABLED" != "true" ] || [ "$HDFS_REPLICATION" = "1" ]; then
+    log "HDFS replication maintenance loop disabled; relying on configured dfs.replication=${HDFS_REPLICATION}"
+    return
+  fi
 
   log "Starting HDFS replication maintenance loop for stream trial"
   (
@@ -186,7 +192,7 @@ start_hdfs_replication_loop() {
 
 start_microbatch_loop() {
   log "Starting stream micro-batch loop with Spark master ${SPARK_MASTER}"
-  nohup setsid bash -lc "cd '${PROJECT_HOME}' && SPARK_MASTER='${SPARK_MASTER}' SPARK_DRIVER_HOST='${SPARK_DRIVER_HOST}' HDFS_REPLICATION='${HDFS_REPLICATION}' HDFS_LAKE_PATH='hdfs://node1:9000/lake/stream' FULL_HDFS_LAKE_PATH='hdfs://node1:9000/lake/full' HDFS_CONTROL_PATH='hdfs://node1:9000/lake/control' STREAM_MICROBATCH_INTERVAL_SECONDS='${MICROBATCH_INTERVAL_SECONDS}' ./scripts/run-stream-microbatch.sh loop" \
+  nohup setsid bash -lc "cd '${PROJECT_HOME}' && SPARK_MASTER='${SPARK_MASTER}' SPARK_DRIVER_HOST='${SPARK_DRIVER_HOST}' HDFS_REPLICATION='${HDFS_REPLICATION}' STREAM_SETREP_ENABLED='${STREAM_SETREP_ENABLED}' HDFS_LAKE_PATH='hdfs://node1:9000/lake/stream' FULL_HDFS_LAKE_PATH='hdfs://node1:9000/lake/full' HDFS_CONTROL_PATH='hdfs://node1:9000/lake/control' STREAM_MICROBATCH_INTERVAL_SECONDS='${MICROBATCH_INTERVAL_SECONDS}' ./scripts/run-stream-microbatch.sh loop" \
     > "${REPORT_DIR}/stream_microbatch_loop.log" 2>&1 &
   echo $! > /tmp/stream_microbatch_loop.pid
   log "Micro-batch PID: $(cat /tmp/stream_microbatch_loop.pid)"

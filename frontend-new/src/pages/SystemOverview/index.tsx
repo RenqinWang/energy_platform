@@ -292,9 +292,9 @@ export default function SystemOverviewPage() {
       width: 100,
       render: (status: string) => {
         const config = {
-          online: { color: 'success', icon: <CheckCircleOutlined />, text: '在线' },
-          warning: { color: 'warning', icon: <WarningOutlined />, text: '告警' },
-          offline: { color: 'error', icon: <CloseCircleOutlined />, text: '离线' }
+          online: { color: 'success', icon: <CheckCircleOutlined />, text: '运行中' },
+          warning: { color: 'warning', icon: <WarningOutlined />, text: '预警' },
+          offline: { color: 'default', icon: <CloseCircleOutlined />, text: '停机' }
         }[status] || { color: 'default', icon: null, text: '未知' };
 
         return (
@@ -402,14 +402,14 @@ export default function SystemOverviewPage() {
         <Col span={6}>
           <Card>
             <Statistic
-              title="在线设备"
+              title="运行中设备"
               value={systemStats.onlineEquipment}
               suffix={`/ ${systemStats.totalEquipment}`}
               valueStyle={{ color: '#52c41a' }}
               prefix={<CheckCircleOutlined />}
             />
             <div style={{ marginTop: 8, fontSize: 12, color: '#999' }}>
-              告警: {systemStats.warningEquipment} | 离线: {systemStats.offlineEquipment}
+              预警: {systemStats.warningEquipment} | 停机: {systemStats.offlineEquipment}
             </div>
           </Card>
         </Col>
@@ -470,9 +470,9 @@ export default function SystemOverviewPage() {
         title="设备运行状态"
         extra={
           <Space>
-            <Tag color="success">在线: {systemStats.onlineEquipment}</Tag>
-            <Tag color="warning">告警: {systemStats.warningEquipment}</Tag>
-            <Tag color="error">离线: {systemStats.offlineEquipment}</Tag>
+            <Tag color="success">运行中: {systemStats.onlineEquipment}</Tag>
+            <Tag color="warning">预警: {systemStats.warningEquipment}</Tag>
+            <Tag>停机: {systemStats.offlineEquipment}</Tag>
           </Space>
         }
       >

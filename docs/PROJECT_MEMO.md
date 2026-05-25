@@ -278,24 +278,20 @@ hdfs://node1:9000/
 │   ├── start_api.sh
 │   ├── test_api.py
 │   └── README.md
-├── frontend/                         # 阶段6: Web前端
-│   ├── index.html
-│   ├── css/
-│   │   └── style.css
-│   ├── js/
-│   │   ├── config.js
-│   │   ├── api.js
-│   │   ├── charts.js
-│   │   ├── table.js
-│   │   └── main.js
-│   └── README.md
+├── frontend-new/                     # 当前 React + Vite 前端
+│   ├── src/
+│   │   ├── pages/
+│   │   ├── api/
+│   │   └── components/
+│   ├── package.json
+│   └── vite.config.ts
 ├── config/
 ├── scripts/
 │   ├── verify_stage2.py
 │   ├── verify_stage3.py
 │   └── verify_stage4.py
 └── docs/
-    ├── implementation-plan.md
+    ├── FINAL_SYSTEM_DESCRIPTION.md
     ├── STAGE2_WORK_SUMMARY.md
     ├── STAGE3_WORK_SUMMARY.md
     ├── STAGE4_WORK_SUMMARY.md
@@ -661,7 +657,7 @@ export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 && \
 
 如有问题，请参考以下文档：
 - 系统设计方案: `/home/student/files_form_group/第一阶段设计方案_v2.md`
-- 实现计划: `/home/student/energy-platform/docs/implementation-plan.md`
+- 最终说明: `/home/student/energy-platform/docs/FINAL_SYSTEM_DESCRIPTION.md`
 - 阶段2总结: `/home/student/energy-platform/docs/stage2_completion_summary.md`
 
 ---

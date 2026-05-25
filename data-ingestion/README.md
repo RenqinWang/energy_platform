@@ -295,16 +295,13 @@ except Exception as e:
     raise
 ```
 
-## 下一步
+## 当前状态
 
-1. **Silver 层处理**: 清洗和标准化 Bronze 层数据
-2. **Gold 层聚合**: 计算经济指标
-3. **实时同步**: 使用 Binlog CDC 实现实时更新
-4. **数据质量监控**: 添加数据质量检查
+数据接入已经接入当前 full/stream 数据湖流程。最终口径以 `docs/FINAL_SYSTEM_DESCRIPTION.md` 为准。
 
 ## 相关文档
 
-- [价格 API 完整文档](../docs/PRICE_API_COMPLETE_GUIDE.md)
+- [最终统一说明文档](../docs/FINAL_SYSTEM_DESCRIPTION.md)
 - [数据完整性分析](../docs/DATA_COMPLETENESS_ANALYSIS.md)
 - [项目备忘录](../docs/PROJECT_MEMO.md)
 

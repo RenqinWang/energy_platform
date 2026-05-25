@@ -1,5 +1,7 @@
 # 智慧能源网监测平台 - 项目完成总结
 
+> 注意：本文档是阶段性总结，部分数据规模、表路径和算法口径已经过期。最终提交和答辩口径以 [FINAL_SYSTEM_DESCRIPTION.md](/home/student/energy-platform/docs/FINAL_SYSTEM_DESCRIPTION.md) 为准。
+
 ## 项目概述
 
 本项目成功实现了一个完整的分布式能源数据分析平台，从数据采集、存储、处理到可视化展示的全流程解决方案。项目基于Apache Spark、Delta Lake、HDFS等大数据技术栈，实现了对能源设备运行数据的实时采集、多层次数据治理和智能分析。

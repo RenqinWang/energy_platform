@@ -1,0 +1,43 @@
+\begin{figure}[H]
+  \centering
+  \resizebox{\textwidth}{!}{%
+  \begin{tikzpicture}[
+      font=\small,
+      layer/.style={draw, rounded corners=3pt, minimum width=4.7cm, minimum height=1.15cm, align=center},
+      arrow/.style={-Latex, very thick},
+      note/.style={draw, rounded corners=2pt, fill=gray!8, align=left, inner sep=5pt}
+    ]
+    \node[layer, fill=orange!10] (b) {Bronze 原始层\\Kafka 原始消息、价格原始快照、offset、ingest\_time};
+    \node[layer, fill=cyan!10, right=1.1cm of b] (s) {Silver 治理层\\点位映射、缺失治理、时间对齐、设备/主题标准化};
+    \node[layer, fill=green!10, right=1.1cm of s] (g) {Gold 服务层\\报表、预测、收益、运行建议、前端宽表};
+
+    \draw[arrow] (b) -- node[above]{清洗治理} (s);
+    \draw[arrow] (s) -- node[above]{聚合建模} (g);
+
+    \node[note, below=0.95cm of b, minimum width=4.7cm] {
+      \textbf{/lake/stream/bronze}\\
+      bronze\_streaming\\
+      bronze\_price\_raw
+    };
+    \node[note, below=0.95cm of s, minimum width=4.7cm] {
+      \textbf{/lake/full|stream/silver}\\
+      silver\_point\_fact\\
+      silver\_chiller\_status\\
+      silver\_price\_dim
+    };
+    \node[note, below=0.95cm of g, minimum width=4.7cm] {
+      \textbf{/lake/full|stream/gold}\\
+      gold\_system\_supply\_hourly\\
+      gold\_system\_report\_\ensuremath{*}\\
+      forecast / revenue / advice
+    };
+
+    \node[note, below=3.2cm of s, minimum width=8.5cm, fill=blue!5] (mode) {
+      full 命名空间保存稳定全量批处理结果；stream 命名空间保存 Kafka 模拟流式和 5 分钟微批增量结果；\\
+      control 命名空间保存 ETL 水位和最近一批明细，用于只处理新数据。
+    };
+  \end{tikzpicture}%
+  }
+  \caption{Delta Lake 三层存储设计}
+  \label{fig:lake}
+\end{figure}

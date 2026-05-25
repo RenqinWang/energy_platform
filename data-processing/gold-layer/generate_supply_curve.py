@@ -5,6 +5,9 @@
 从 silver_chiller_status 读取设备状态数据，按小时统计供能量，生成 gold_supply_curve_hourly 表
 """
 
+import os
+
+from delta.tables import DeltaTable
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
     col, hour, date_format, sum as spark_sum, avg, max as spark_max,
@@ -12,13 +15,98 @@ from pyspark.sql.functions import (
 )
 
 ESTIMATED_CHILLER_COP = 3.0
+HDFS_ROOT = os.getenv("HDFS_LAKE_PATH", "hdfs://node1:9000/lake")
+CONTROL_ROOT = os.getenv("HDFS_CONTROL_PATH", "hdfs://node1:9000/lake/control")
+BATCH_POINT_FACT = f"{CONTROL_ROOT}/stream_last_batch_point_fact"
+
+
+def is_incremental_mode():
+    return os.getenv("STREAM_INCREMENTAL", "false").lower() == "true"
+
+
+def is_delta_table(spark, path):
+    try:
+        return DeltaTable.isDeltaTable(spark, path)
+    except Exception:
+        return False
+
+
+def path_exists(spark, path):
+    try:
+        hadoop_path = spark.sparkContext._jvm.org.apache.hadoop.fs.Path(path)
+        fs = hadoop_path.getFileSystem(spark.sparkContext._jsc.hadoopConfiguration())
+        return fs.exists(hadoop_path)
+    except Exception:
+        return False
+
+
+def read_batch_point_fact(spark):
+    if not path_exists(spark, BATCH_POINT_FACT):
+        return None
+    try:
+        return spark.read.parquet(BATCH_POINT_FACT)
+    except Exception:
+        if is_delta_table(spark, BATCH_POINT_FACT):
+            return spark.read.format("delta").load(BATCH_POINT_FACT)
+        raise
+
+
+def write_supply_curve(spark, df_hourly, output_path, incremental):
+    if incremental and is_delta_table(spark, output_path):
+        print("   🔁 增量合并 Gold 层冷机小时供能曲线")
+        (
+            DeltaTable.forPath(spark, output_path)
+            .alias("t")
+            .merge(
+                df_hourly.alias("s"),
+                "t.station_id = s.station_id "
+                "AND t.equipment_id = s.equipment_id "
+                "AND t.stat_hour = s.stat_hour",
+            )
+            .whenMatchedUpdateAll()
+            .whenNotMatchedInsertAll()
+            .execute()
+        )
+        return
+
+    df_hourly.write \
+        .format("delta") \
+        .mode("overwrite") \
+        .option("overwriteSchema", "true") \
+        .partitionBy("dt") \
+        .save(output_path)
+
+
+def load_affected_chiller_hours(spark, incremental):
+    batch_df = read_batch_point_fact(spark) if incremental else None
+    if batch_df is None:
+        return None
+
+    affected = (
+        batch_df
+        .filter(col("system_type") == "chiller")
+        .withColumn("stat_hour", date_format(col("event_time"), "yyyy-MM-dd HH:00:00"))
+        .select("station_id", "stat_hour")
+        .distinct()
+    )
+    if affected.limit(1).count() == 0:
+        print("   🔁 增量模式，本轮没有冷机小时受影响")
+        return affected
+    print("   🔁 增量模式，按本轮 batch 精确小时重算冷机供能曲线")
+    return affected
 
 def create_spark_session():
     """创建 Spark Session"""
+    spark_master = os.getenv("SPARK_MASTER", "local[*]")
+    driver_host = os.getenv("SPARK_DRIVER_HOST", "192.168.0.94")
+    hdfs_replication = os.getenv("HDFS_REPLICATION", "1")
     spark = (
         SparkSession.builder
         .appName("Generate_Supply_Curve")
-        .master("local[*]")
+        .master(spark_master)
+        .config("spark.driver.host", driver_host)
+        .config("spark.driver.bindAddress", "0.0.0.0")
+        .config("spark.hadoop.dfs.replication", hdfs_replication)
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
         .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
         .config("spark.jars.packages", "io.delta:delta-spark_2.12:3.2.0")
@@ -38,11 +126,16 @@ def main():
 
     # 1. 读取Silver层冷机设备状态宽表
     print("\n📥 步骤 1: 读取 Silver 层冷机设备状态宽表...")
-    silver_path = "hdfs://node1:9000/lake/silver/silver_chiller_status"
+    silver_path = f"{HDFS_ROOT}/silver/silver_chiller_status"
     df_status = spark.read.format("delta").load(silver_path)
+    incremental = is_incremental_mode()
+    affected_hours = load_affected_chiller_hours(spark, incremental)
 
-    status_count = df_status.count()
-    print(f"   ✅ 读取成功: {status_count:,} 条记录")
+    if incremental:
+        print("   ✅ 读取成功: 增量模式跳过全表计数")
+    else:
+        status_count = df_status.count()
+        print(f"   ✅ 读取成功: {status_count:,} 条记录")
 
     # 2. 数据预览
     print("\n📊 原始数据预览:")
@@ -62,6 +155,8 @@ def main():
         "stat_hour",
         date_format(col("stat_timestamp"), "yyyy-MM-dd HH:00:00")
     )
+    if affected_hours is not None:
+        df_status = df_status.join(affected_hours, ["station_id", "stat_hour"], "inner")
 
     # run_flag 原始数据中存在少量 -1 / NULL，这里统一按非运行处理。
     df_status = df_status.withColumn(
@@ -231,15 +326,10 @@ def main():
     ).orderBy("dt").show()
 
     # 9. 写入Gold层
-    output_path = "hdfs://node1:9000/lake/gold/gold_supply_curve_hourly"
+    output_path = f"{HDFS_ROOT}/gold/gold_supply_curve_hourly"
     print(f"\n💾 步骤 6: 写入 Gold 层: {output_path}")
 
-    df_hourly.write \
-        .format("delta") \
-        .mode("overwrite") \
-        .option("overwriteSchema", "true") \
-        .partitionBy("dt") \
-        .save(output_path)
+    write_supply_curve(spark, df_hourly, output_path, incremental)
 
     print("   ✅ 数据已写入 Gold 层")
 

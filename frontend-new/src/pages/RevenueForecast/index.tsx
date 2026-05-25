@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { Alert, Card, Col, Row, Select, Space, Statistic, Table, Tag } from 'antd';
 import { DollarOutlined, FallOutlined, RiseOutlined } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
-import { getSystemEquipment, getSystemRevenueForecast } from '../../api/report';
+import { getPriceHistory, getSystemEquipment, getSystemRevenueForecast } from '../../api/report';
 import Loading from '../../components/Common/Loading';
 import { formatDateTime, formatEnergy, formatNumber } from '../../utils/format';
-import type { SystemRevenueForecastRecord, SystemType } from '../../api/report';
+import type { PriceHistoryRecord, SystemRevenueForecastRecord, SystemType } from '../../api/report';
 import type { EChartsOption } from 'echarts';
 import type { ColumnsType } from 'antd/es/table';
 
@@ -45,6 +45,7 @@ export default function RevenueForecast() {
   const [selectedEquipment, setSelectedEquipment] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<SystemRevenueForecastRecord[]>([]);
+  const [priceHistory, setPriceHistory] = useState<PriceHistoryRecord[]>([]);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
@@ -116,6 +117,32 @@ export default function RevenueForecast() {
       cancelled = true;
     };
   }, [systemType, selectedEquipment]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadPrices = async () => {
+      const end = new Date();
+      const start = new Date(end.getTime() - 6 * 24 * 60 * 60 * 1000);
+      const format = (date: Date) => date.toISOString().slice(0, 10);
+      try {
+        const rows = await getPriceHistory({
+          start_date: format(start),
+          end_date: format(end),
+          limit: 200,
+        });
+        if (!cancelled) setPriceHistory(rows);
+      } catch (err) {
+        console.error('Failed to load price history:', err);
+        if (!cancelled) setPriceHistory([]);
+      }
+    };
+
+    loadPrices();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const selectedName = selectedEquipment ? equipmentLabel(systemType, selectedEquipment) : '-';
   const forecastDate = data[0]?.forecast_date || data[0]?.dt || '-';
@@ -244,6 +271,28 @@ export default function RevenueForecast() {
         areaStyle: { opacity: 0.16 },
       },
     ],
+  };
+
+  const priceDates = Array.from(new Set(priceHistory.map((item) => item.effective_date))).sort();
+  const historicalPriceChartOption: EChartsOption = {
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['供冷价格', '供热价格', '电价'], top: 8 },
+    grid: { left: 48, right: 28, top: 64, bottom: 48, containLabel: true },
+    xAxis: { type: 'category', data: priceDates, name: '日期', axisLabel: { rotate: 30 } },
+    yAxis: { type: 'value', name: '元/kWh' },
+    series: ['cooling', 'heating', 'electricity'].map((type, idx) => {
+      const label = type === 'cooling' ? '供冷价格' : type === 'heating' ? '供热价格' : '电价';
+      const color = ['#13c2c2', '#f5222d', '#fa8c16'][idx];
+      const rows = priceHistory.filter((item) => item.price_type === type);
+      const byDate = new Map(rows.map((item) => [item.effective_date, item.price]));
+      return {
+        name: label,
+        type: 'line',
+        smooth: true,
+        data: priceDates.map((date) => byDate.get(date) ?? null),
+        itemStyle: { color },
+      };
+    }),
   };
 
   const columns: ColumnsType<SystemRevenueForecastRecord> = [
@@ -389,10 +438,14 @@ export default function RevenueForecast() {
       ) : data.length > 0 ? (
         <>
           <Alert
-            type="info"
+            type={totals.totalProfit < 0 ? 'warning' : 'info'}
             showIcon
             message={`${systemLabel[systemType]} / ${selectedName}`}
-            description={`预测日期 ${forecastDate}，模型 ${modelVersion}，算法 ${algorithm}。当前页面读取统一 Gold 收益预测表，覆盖冷机、热机和冷热电三联供。`}
+            description={
+              totals.totalProfit < 0
+                ? `预测日期 ${forecastDate}，未来24小时预计亏损 ${formatMoney(totals.totalProfit)}，建议降低高价时段供能或调整设备负荷。模型 ${modelVersion}，算法 ${algorithm}。`
+                : `预测日期 ${forecastDate}，模型 ${modelVersion}，算法 ${algorithm}。当前页面读取统一 Gold 收益预测表，覆盖冷机、热机和冷热电三联供。`
+            }
           />
 
           <Row gutter={[16, 16]}>
@@ -464,6 +517,10 @@ export default function RevenueForecast() {
               </Card>
             </Col>
           </Row>
+
+          <Card title="近7日能源价格变化">
+            <ReactECharts option={historicalPriceChartOption} style={{ height: 340 }} />
+          </Card>
 
           <Card title="详细预测数据">
             <Table

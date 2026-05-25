@@ -247,6 +247,16 @@ async def health_check():
     }
 
 
+@app.get("/api/data-mode")
+async def get_data_mode():
+    """Return the active lake namespace used by this API process."""
+    return {
+        "mode": config.DATA_MODE,
+        "lake_path": config.HDFS_LAKE_PATH,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+
 @app.get("/api/stations", response_model=StationListResponse)
 async def get_stations():
     """Get list of all station IDs"""
@@ -431,6 +441,78 @@ async def get_system_revenue_forecast(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to query system revenue forecast: {str(e)}")
+
+
+@app.get("/api/dashboard/summary", response_model=Dict[str, Any])
+async def get_dashboard_summary(
+    station_id: Optional[str] = Query(None, description="Filter by station ID"),
+    stat_date: Optional[str] = Query(None, description="Dashboard date (YYYY-MM-DD)"),
+    start_date: Optional[str] = Query(None, description="Dashboard start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="Dashboard end date (YYYY-MM-DD)")
+):
+    """Return dashboard KPI, equipment matrix, history/forecast and advice summary."""
+    try:
+        return dal.get_dashboard_summary(
+            station_id=station_id,
+            stat_date=stat_date,
+            start_date=start_date,
+            end_date=end_date,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to query dashboard summary: {str(e)}")
+
+
+@app.get("/api/dashboard/dates", response_model=List[str])
+async def get_dashboard_dates(
+    station_id: Optional[str] = Query(None, description="Filter by station ID")
+):
+    """Return dates that have Gold dashboard data."""
+    try:
+        return dal.query_dashboard_dates(station_id=station_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to query dashboard dates: {str(e)}")
+
+
+@app.get("/api/price-history", response_model=List[Dict[str, Any]])
+async def get_price_history(
+    station_id: Optional[str] = Query(None, description="Station code, for example ST001"),
+    price_type: Optional[str] = Query(None, description="cooling/heating/electricity"),
+    start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
+    limit: int = Query(1000, ge=1, le=10000, description="Maximum number of records")
+):
+    """Query Silver price dimension history."""
+    try:
+        return dal.query_price_history(
+            station_id=station_id,
+            price_type=price_type,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to query price history: {str(e)}")
+
+
+@app.get("/api/operation-advice", response_model=List[Dict[str, Any]])
+async def get_operation_advice(
+    system_type: Optional[str] = Query(None, description="Filter by system type: chiller/heating/cchp"),
+    station_id: Optional[str] = Query(None, description="Filter by station ID"),
+    equipment_id: Optional[str] = Query(None, description="Filter by equipment ID"),
+    risk_level: Optional[str] = Query(None, description="Filter by risk level"),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum number of records")
+):
+    """Query unified operation advice for all systems."""
+    try:
+        return dal.query_operation_advice(
+            system_type=system_type,
+            station_id=station_id,
+            equipment_id=equipment_id,
+            risk_level=risk_level,
+            limit=limit
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to query operation advice: {str(e)}")
 
 
 @app.get("/api/supply-curve", response_model=List[SupplyCurveRecord])

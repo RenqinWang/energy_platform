@@ -1,21 +1,21 @@
-// Main Layout组件
 import { Layout as AntLayout } from 'antd';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import Header from './Header';
-import Footer from './Footer';
 
 const { Content } = AntLayout;
 
 export default function Layout() {
+  const location = useLocation();
+  const isDashboard = location.pathname === '/dashboard';
+
   return (
-    <AntLayout style={{ minHeight: '100vh' }}>
+    <AntLayout className="min-h-screen">
       <Header />
-      <Content style={{ padding: '24px', background: '#f0f2f5' }}>
-        <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
+      <Content className={isDashboard ? 'bg-slate-100' : 'bg-slate-100 p-4 lg:p-6'}>
+        <div className={isDashboard ? '' : 'mx-auto max-w-[1480px]'}>
           <Outlet />
         </div>
       </Content>
-      <Footer />
     </AntLayout>
   );
 }

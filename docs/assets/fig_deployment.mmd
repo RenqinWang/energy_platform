@@ -1,0 +1,24 @@
+flowchart LR
+  N1["Node-1 入口节点<br/>公网 115.120.208.241<br/>内网 192.168.0.94<br/>NameNode / DataNode<br/>Spark Worker / FastAPI / React"]
+  N2["Node-2 调度节点<br/>公网 1.94.113.240<br/>内网 192.168.1.87<br/>Spark Master / Worker<br/>DataNode / Kafka Broker"]
+  N3["Node-3 计算存储节点<br/>公网 123.60.106.233<br/>内网 192.168.1.19<br/>DataNode / Spark Worker<br/>Kafka Broker"]
+
+  FE["React 前端<br/>3001"]
+  API["FastAPI<br/>8001 full / 8002 stream"]
+  SP["Spark Standalone<br/>spark://node2:7077"]
+  KF["Kafka 集群<br/>9092"]
+  HDFS["HDFS + Delta Lake<br/>hdfs://node1:9000/lake"]
+
+  N1 <-->|HDFS block replication| N2
+  N2 <-->|HDFS / Kafka / Spark| N3
+  FE -->|HTTP API| API
+  API -->|Delta query| HDFS
+  SP -->|ETL / SQL| HDFS
+  KF -->|Kafka topics| HDFS
+
+  classDef server fill:#eef5ff,stroke:#3b82f6,stroke-width:1px,color:#111827;
+  classDef service fill:#f8fafc,stroke:#64748b,stroke-width:1px,color:#111827;
+  classDef store fill:#ecfdf5,stroke:#22c55e,stroke-width:1px,color:#111827;
+  class N1,N2,N3 server;
+  class FE,API,SP,KF service;
+  class HDFS store;

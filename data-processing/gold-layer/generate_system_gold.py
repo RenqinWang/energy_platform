@@ -12,8 +12,11 @@ script builds system-wide Gold tables for UI/reporting requirements:
 - gold_system_revenue_forecast
 """
 
+import os
 import sys
+from datetime import datetime, timedelta
 
+from delta.tables import DeltaTable
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
     avg,
@@ -48,9 +51,11 @@ from pyspark.sql.functions import (
 from pyspark.sql.window import Window
 
 
-HDFS_ROOT = "hdfs://node1:9000/lake"
+HDFS_ROOT = os.getenv("HDFS_LAKE_PATH", "hdfs://node1:9000/lake")
+CONTROL_ROOT = os.getenv("HDFS_CONTROL_PATH", "hdfs://node1:9000/lake/control")
 SILVER_POINT_FACT = f"{HDFS_ROOT}/silver/silver_point_fact"
 SILVER_PRICE_DIM = f"{HDFS_ROOT}/silver/silver_price_dim"
+BATCH_POINT_FACT = f"{CONTROL_ROOT}/stream_last_batch_point_fact"
 GOLD_CHILLER_HOURLY = f"{HDFS_ROOT}/gold/gold_supply_curve_hourly"
 
 GOLD_SYSTEM_HOURLY = f"{HDFS_ROOT}/gold/gold_system_supply_hourly"
@@ -61,8 +66,182 @@ GOLD_SYSTEM_FORECAST = f"{HDFS_ROOT}/gold/gold_system_forecast_supply"
 GOLD_SYSTEM_REVENUE_FORECAST = f"{HDFS_ROOT}/gold/gold_system_revenue_forecast"
 
 GAS_KWH_PER_M3 = 9.7
+GAS_PRICE_PER_M3 = float(os.getenv("GAS_PRICE_PER_M3", "2.8"))
+GAS_PRICE_PER_KWH = GAS_PRICE_PER_M3 / GAS_KWH_PER_M3
 BOILER_EFFICIENCY = 0.9
 HEATING_NOMINAL_KW = 1000.0
+
+
+def is_incremental_mode():
+    return os.getenv("STREAM_INCREMENTAL", "false").lower() == "true"
+
+
+def parse_status_time(value):
+    if not value:
+        return None
+    return datetime.strptime(value[:19], "%Y-%m-%d %H:%M:%S")
+
+
+def fmt_time(value):
+    return value.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def stream_windows():
+    start = parse_status_time(os.getenv("STREAM_BATCH_MIN_EVENT_TIME", ""))
+    end = parse_status_time(os.getenv("STREAM_BATCH_MAX_EVENT_TIME", ""))
+    if start is None or end is None:
+        return None
+
+    start_hour = start.replace(minute=0, second=0, microsecond=0)
+    end_hour = end.replace(minute=0, second=0, microsecond=0)
+    return {
+        "start_hour": fmt_time(start_hour),
+        "end_hour": fmt_time(end_hour + timedelta(hours=1) - timedelta(seconds=1)),
+        "lookback_start": fmt_time(start_hour - timedelta(hours=1)),
+        "start_raw": start,
+        "end_raw": end,
+    }
+
+
+def period_window(period):
+    start = parse_status_time(os.getenv("STREAM_BATCH_MIN_EVENT_TIME", ""))
+    end = parse_status_time(os.getenv("STREAM_BATCH_MAX_EVENT_TIME", ""))
+    if start is None or end is None:
+        return None, None
+
+    if period == "daily":
+        start_period = start.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_period = end.replace(hour=23, minute=59, second=59, microsecond=0)
+    elif period == "weekly":
+        start_period = (start - timedelta(days=start.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+        end_period = (end + timedelta(days=6 - end.weekday())).replace(hour=23, minute=59, second=59, microsecond=0)
+    else:
+        start_period = start.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        if end.month == 12:
+            next_month = end.replace(year=end.year + 1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        else:
+            next_month = end.replace(month=end.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        end_period = next_month - timedelta(seconds=1)
+
+    return fmt_time(start_period), fmt_time(end_period)
+
+
+def is_delta_table(spark, path):
+    try:
+        return DeltaTable.isDeltaTable(spark, path)
+    except Exception:
+        return False
+
+
+def path_exists(spark, path):
+    try:
+        hadoop_path = spark.sparkContext._jvm.org.apache.hadoop.fs.Path(path)
+        fs = hadoop_path.getFileSystem(spark.sparkContext._jsc.hadoopConfiguration())
+        return fs.exists(hadoop_path)
+    except Exception:
+        return False
+
+
+def load_batch_fact(spark):
+    if not path_exists(spark, BATCH_POINT_FACT):
+        return None
+    try:
+        return spark.read.parquet(BATCH_POINT_FACT)
+    except Exception:
+        if is_delta_table(spark, BATCH_POINT_FACT):
+            return spark.read.format("delta").load(BATCH_POINT_FACT)
+        raise
+
+
+def load_affected_hours(spark, include_lookback=False):
+    batch = load_batch_fact(spark)
+    if batch is None:
+        return None
+
+    affected = (
+        batch.withColumn("stat_hour", date_format(col("event_time"), "yyyy-MM-dd HH:00:00"))
+        .select("stat_hour")
+        .distinct()
+    )
+    if include_lookback:
+        lookback = affected.select(
+            date_format(
+                from_unixtime(unix_timestamp(col("stat_hour"), "yyyy-MM-dd HH:mm:ss") - 3600).cast("timestamp"),
+                "yyyy-MM-dd HH:00:00",
+            ).alias("stat_hour")
+        )
+        affected = affected.unionByName(lookback).distinct()
+    return affected
+
+
+def load_affected_periods(spark, period):
+    batch = load_batch_fact(spark)
+    if batch is None:
+        return None
+
+    base = batch.withColumn("event_ts", to_timestamp(col("event_time"))).filter(col("event_ts").isNotNull())
+    if period == "daily":
+        return base.withColumn("stat_date", to_date(col("event_ts"))).select("stat_date").distinct()
+    if period == "weekly":
+        return (
+            base.withColumn("stat_year", year(col("event_ts")))
+            .withColumn("stat_week", weekofyear(col("event_ts")))
+            .withColumn("stat_week_str", expr("concat(stat_year, '-W', lpad(stat_week, 2, '0'))"))
+            .select("stat_week_str")
+            .distinct()
+        )
+    return (
+        base.withColumn("stat_year", year(col("event_ts")))
+        .withColumn("stat_month", month(col("event_ts")))
+        .withColumn("stat_month_str", expr("concat(stat_year, '-', lpad(stat_month, 2, '0'))"))
+        .select("stat_month_str")
+        .distinct()
+    )
+
+
+def merge_or_overwrite(spark, path, df, merge_condition, partition_cols, incremental):
+    if incremental and is_delta_table(spark, path):
+        (
+            DeltaTable.forPath(spark, path)
+            .alias("t")
+            .merge(df.alias("s"), merge_condition)
+            .whenMatchedUpdateAll()
+            .whenNotMatchedInsertAll()
+            .execute()
+        )
+        return
+
+    writer = df.write.format("delta").mode("overwrite").option("overwriteSchema", "true")
+    if partition_cols:
+        writer = writer.partitionBy(*partition_cols)
+    writer.save(path)
+
+
+def replace_equipment_rows_or_overwrite(spark, path, df, partition_cols, incremental):
+    if incremental and is_delta_table(spark, path):
+        keys = df.select("station_id", "system_type", "equipment_id").distinct()
+        if keys.limit(1).count() == 0:
+            print(f"No changed equipment rows for {path}; write skipped.")
+            return
+        (
+            DeltaTable.forPath(spark, path)
+            .alias("t")
+            .merge(
+                keys.alias("s"),
+                "t.station_id = s.station_id "
+                "AND t.system_type = s.system_type "
+                "AND t.equipment_id = s.equipment_id",
+            )
+            .whenMatchedDelete()
+            .execute()
+        )
+        df.write.format("delta").mode("append").save(path)
+        return
+
+    writer = df.write.format("delta").mode("overwrite").option("overwriteSchema", "true")
+    if partition_cols:
+        writer = writer.partitionBy(*partition_cols)
+    writer.save(path)
 
 HOURLY_COLUMNS = [
     "station_id",
@@ -105,10 +284,16 @@ HOURLY_COLUMNS = [
 
 
 def create_spark_session():
+    spark_master = os.getenv("SPARK_MASTER", "local[*]")
+    driver_host = os.getenv("SPARK_DRIVER_HOST", "192.168.0.94")
+    hdfs_replication = os.getenv("HDFS_REPLICATION", "1")
     spark = (
         SparkSession.builder
         .appName("GenerateSystemGold")
-        .master("local[*]")
+        .master(spark_master)
+        .config("spark.driver.host", driver_host)
+        .config("spark.driver.bindAddress", "0.0.0.0")
+        .config("spark.hadoop.dfs.replication", hdfs_replication)
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
         .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
         .config("spark.jars.packages", "io.delta:delta-spark_2.12:3.2.0")
@@ -132,6 +317,7 @@ def read_price_map(spark):
         "electricity": prices.get("electricity", 0.8),
         "cooling": prices.get("cooling", 0.3),
         "heating": prices.get("heating", 0.35),
+        "gas": prices.get("gas", GAS_PRICE_PER_KWH),
     }
 
 
@@ -139,9 +325,16 @@ def select_hourly(df):
     return df.select(*HOURLY_COLUMNS)
 
 
-def load_chiller_hourly(spark):
+def load_chiller_hourly(spark, window_start=None, window_end=None, affected_hours=None):
     print("Loading chiller hourly Gold table...")
     df = spark.read.format("delta").load(GOLD_CHILLER_HOURLY)
+    if affected_hours is not None:
+        df = df.join(affected_hours, "stat_hour", "inner")
+    elif window_start and window_end:
+        df = df.filter(
+            (to_timestamp(col("stat_hour"), "yyyy-MM-dd HH:mm:ss") >= to_timestamp(lit(window_start)))
+            & (to_timestamp(col("stat_hour"), "yyyy-MM-dd HH:mm:ss") <= to_timestamp(lit(window_end)))
+        )
 
     return select_hourly(
         df.withColumn("system_type", lit("chiller"))
@@ -154,9 +347,9 @@ def load_chiller_hourly(spark):
     )
 
 
-def load_fact(spark):
+def load_fact(spark, window_start=None, window_end=None, affected_hours=None):
     print("Loading Silver point fact...")
-    return (
+    fact = (
         spark.read.format("delta")
         .load(SILVER_POINT_FACT)
         .filter(col("system_type").isin("boiler", "burner", "cchp", "generator"))
@@ -166,6 +359,14 @@ def load_fact(spark):
         .withColumn("dt", to_date(col("event_ts")))
         .withColumn("value_clean", when(col("value") >= 0, col("value")))
     )
+    if affected_hours is not None:
+        fact = fact.join(affected_hours, "stat_hour", "inner")
+    elif window_start and window_end:
+        fact = fact.filter(
+            (col("event_ts") >= to_timestamp(lit(window_start)))
+            & (col("event_ts") <= to_timestamp(lit(window_end)))
+        )
+    return fact
 
 
 def hourly_delta(df, output_col, max_delta):
@@ -409,16 +610,46 @@ def build_cchp_hourly(fact):
 
 
 def build_system_hourly(spark):
-    fact = load_fact(spark).cache()
-    chiller = load_chiller_hourly(spark)
+    incremental = is_incremental_mode()
+    affected_hours = load_affected_hours(spark, include_lookback=False) if incremental else None
+    affected_hours_with_lookback = load_affected_hours(spark, include_lookback=True) if incremental else None
+    windows = stream_windows() if incremental and affected_hours is None else None
+    if incremental and affected_hours is not None:
+        print("Incremental hourly mode: recomputing exact hours from last-batch detail table")
+        fact = load_fact(spark, affected_hours=affected_hours_with_lookback).cache()
+        chiller = load_chiller_hourly(spark, affected_hours=affected_hours)
+    elif incremental and windows:
+        print(f"Incremental hourly window: {windows['start_hour']} -> {windows['end_hour']}")
+        fact = load_fact(spark, windows["lookback_start"], windows["end_hour"]).cache()
+        chiller = load_chiller_hourly(spark, windows["start_hour"], windows["end_hour"])
+    else:
+        fact = load_fact(spark).cache()
+        chiller = load_chiller_hourly(spark)
     heating = build_heating_hourly(fact)
     cchp = build_cchp_hourly(fact)
 
     hourly = chiller.unionByName(heating).unionByName(cchp)
+    if incremental and affected_hours is not None:
+        hourly = hourly.join(affected_hours, "stat_hour", "inner")
+    elif incremental and windows:
+        hourly = hourly.filter(
+            (to_timestamp(col("stat_hour"), "yyyy-MM-dd HH:mm:ss") >= to_timestamp(lit(windows["start_hour"])))
+            & (to_timestamp(col("stat_hour"), "yyyy-MM-dd HH:mm:ss") <= to_timestamp(lit(windows["end_hour"])))
+        )
     hourly = hourly.orderBy("system_type", "equipment_id", "stat_hour")
 
     print(f"Writing unified hourly table: {GOLD_SYSTEM_HOURLY}")
-    hourly.write.format("delta").mode("overwrite").option("overwriteSchema", "true").partitionBy("system_type", "dt").save(GOLD_SYSTEM_HOURLY)
+    merge_or_overwrite(
+        spark,
+        GOLD_SYSTEM_HOURLY,
+        hourly,
+        "t.station_id = s.station_id "
+        "AND t.system_type = s.system_type "
+        "AND t.equipment_id = s.equipment_id "
+        "AND t.stat_hour = s.stat_hour",
+        ["system_type", "dt"],
+        incremental and (affected_hours is not None or windows is not None),
+    )
 
     verified = spark.read.format("delta").load(GOLD_SYSTEM_HOURLY)
     print("Unified hourly summary:")
@@ -467,7 +698,26 @@ def add_period_columns(hourly, period):
 
 
 def build_report(spark, hourly, period, prices):
+    incremental = is_incremental_mode()
     period_df, group_cols, expected_hours = add_period_columns(hourly, period)
+    if incremental:
+        affected_periods = load_affected_periods(spark, period)
+        if affected_periods is not None:
+            print(f"Incremental {period} report mode: recomputing exact periods from last-batch detail table")
+            if period == "daily":
+                period_df = period_df.join(affected_periods, "stat_date", "inner")
+            elif period == "weekly":
+                period_df = period_df.join(affected_periods, "stat_week_str", "inner")
+            else:
+                period_df = period_df.join(affected_periods, "stat_month_str", "inner")
+        else:
+            window_start, window_end = period_window(period)
+            if window_start and window_end:
+                print(f"Incremental {period} report window: {window_start} -> {window_end}")
+                period_df = period_df.filter(
+                    (col("stat_ts") >= to_timestamp(lit(window_start)))
+                    & (col("stat_ts") <= to_timestamp(lit(window_end)))
+                )
 
     report = (
         period_df.groupBy(*group_cols)
@@ -510,7 +760,12 @@ def build_report(spark, hourly, period, prices):
         .withColumn("equipment_utilization_rate", col("total_run_minutes") / (expected_hours * 60.0))
         .withColumn("load_factor", when(col("peak_supply_kwh") > 0, col("avg_supply_kwh") / col("peak_supply_kwh")))
         .withColumn("data_completeness_rate", col("hour_count") / expected_hours)
-        .withColumn("total_energy_cost", col("total_energy_consumption_kwh") * lit(prices["electricity"]))
+        .withColumn(
+            "input_energy_price",
+            when(col("system_type").isin("heating", "cchp"), lit(prices["gas"]))
+            .otherwise(lit(prices["electricity"])),
+        )
+        .withColumn("total_energy_cost", col("total_energy_consumption_kwh") * col("input_energy_price"))
         .withColumn(
             "total_supply_revenue",
             col("total_cooling_supply_kwh") * lit(prices["cooling"])
@@ -665,8 +920,41 @@ def build_report(spark, hourly, period, prices):
         )
         output_path = GOLD_SYSTEM_MONTHLY
 
+    if period == "daily":
+        merge_condition = (
+            "t.station_id = s.station_id "
+            "AND t.system_type = s.system_type "
+            "AND t.equipment_id = s.equipment_id "
+            "AND t.stat_date = s.stat_date"
+        )
+    elif period == "weekly":
+        merge_condition = (
+            "t.station_id = s.station_id "
+            "AND t.system_type = s.system_type "
+            "AND t.equipment_id = s.equipment_id "
+            "AND t.stat_week_str = s.stat_week_str "
+            "AND t.week_start_date = s.week_start_date "
+            "AND t.week_end_date = s.week_end_date"
+        )
+    else:
+        merge_condition = (
+            "t.station_id = s.station_id "
+            "AND t.system_type = s.system_type "
+            "AND t.equipment_id = s.equipment_id "
+            "AND t.stat_month_str = s.stat_month_str "
+            "AND t.month_start_date = s.month_start_date "
+            "AND t.month_end_date = s.month_end_date"
+        )
+
     print(f"Writing {period} system report: {output_path}")
-    report.write.format("delta").mode("overwrite").option("overwriteSchema", "true").partitionBy("system_type", "dt").save(output_path)
+    merge_or_overwrite(
+        spark,
+        output_path,
+        report,
+        merge_condition,
+        ["system_type", "dt"],
+        incremental,
+    )
 
     verified = spark.read.format("delta").load(output_path)
     print(f"{period} report summary:")
@@ -679,6 +967,9 @@ def build_report(spark, hourly, period, prices):
 
 def build_forecast(hourly):
     print("Building baseline 24h system supply forecast...")
+    incremental = is_incremental_mode()
+    affected_hours = load_affected_hours(hourly.sparkSession, include_lookback=False) if incremental else None
+    windows = stream_windows() if incremental and affected_hours is None else None
     hist = (
         hourly.withColumn("stat_ts", to_timestamp(col("stat_hour"), "yyyy-MM-dd HH:mm:ss"))
         .withColumn("hour_of_day", hour(col("stat_ts")))
@@ -687,6 +978,24 @@ def build_forecast(hourly):
     )
 
     last_seen = hist.groupBy("station_id", "system_type", "equipment_id").agg(spark_max("stat_ts").alias("last_hour"))
+    if incremental and affected_hours is not None:
+        changed_keys = (
+            hist.join(affected_hours, "stat_hour", "inner")
+            .select("station_id", "system_type", "equipment_id")
+            .distinct()
+        )
+        last_seen = last_seen.join(changed_keys, ["station_id", "system_type", "equipment_id"], "inner")
+    elif incremental and windows:
+        changed_keys = (
+            hist.filter(
+                (col("stat_ts") >= to_timestamp(lit(windows["start_hour"])))
+                & (col("stat_ts") <= to_timestamp(lit(windows["end_hour"])))
+            )
+            .select("station_id", "system_type", "equipment_id")
+            .distinct()
+        )
+        last_seen = last_seen.join(changed_keys, ["station_id", "system_type", "equipment_id"], "inner")
+
     future = (
         last_seen.withColumn("forecast_hour_offset", explode(sequence(lit(1), lit(24))))
         .withColumn("target_ts", from_unixtime(unix_timestamp(col("last_hour")) + col("forecast_hour_offset") * 3600).cast("timestamp"))
@@ -762,17 +1071,30 @@ def build_forecast(hourly):
     )
 
     print(f"Writing system forecast: {GOLD_SYSTEM_FORECAST}")
-    forecast.write.format("delta").mode("overwrite").option("overwriteSchema", "true").partitionBy("system_type", "dt").save(GOLD_SYSTEM_FORECAST)
+    replace_equipment_rows_or_overwrite(
+        forecast.sparkSession,
+        GOLD_SYSTEM_FORECAST,
+        forecast,
+        ["system_type", "dt"],
+        incremental and (affected_hours is not None or windows is not None),
+    )
     forecast.groupBy("system_type").agg(count("*").alias("rows"), spark_sum("predicted_supply_kwh").alias("predicted_supply_kwh")).show(50, truncate=False)
     return forecast
 
 
 def build_revenue_forecast(forecast, prices):
     print("Building system revenue forecast...")
+    incremental = is_incremental_mode()
+    affected_hours = load_affected_hours(forecast.sparkSession, include_lookback=False) if incremental else None
+    windows = stream_windows() if incremental and affected_hours is None else None
     revenue = (
         forecast.withColumn("forecast_date", to_date(col("target_hour")))
         .withColumn("forecast_hour", hour(to_timestamp(col("target_hour"), "yyyy-MM-dd HH:mm:ss")))
-        .withColumn("energy_price", lit(prices["electricity"]))
+        .withColumn(
+            "energy_price",
+            when(col("system_type").isin("heating", "cchp"), lit(prices["gas"]))
+            .otherwise(lit(prices["electricity"])),
+        )
         .withColumn("cooling_price", lit(prices["cooling"]))
         .withColumn("heating_price", lit(prices["heating"]))
         .withColumn(
@@ -810,7 +1132,13 @@ def build_revenue_forecast(forecast, prices):
     )
 
     print(f"Writing system revenue forecast: {GOLD_SYSTEM_REVENUE_FORECAST}")
-    revenue.write.format("delta").mode("overwrite").option("overwriteSchema", "true").partitionBy("system_type", "dt").save(GOLD_SYSTEM_REVENUE_FORECAST)
+    replace_equipment_rows_or_overwrite(
+        revenue.sparkSession,
+        GOLD_SYSTEM_REVENUE_FORECAST,
+        revenue,
+        ["system_type", "dt"],
+        incremental and (affected_hours is not None or windows is not None),
+    )
     revenue.groupBy("system_type").agg(count("*").alias("rows"), spark_sum("predicted_profit").alias("predicted_profit")).show(50, truncate=False)
     return revenue
 

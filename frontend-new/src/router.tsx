@@ -2,6 +2,7 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/Common/ErrorBoundary';
+import DashboardPage from './pages/Dashboard';
 import DeviceQueryPage from './pages/DeviceQuery';
 import ThemeQueryPage from './pages/ThemeQuery';
 import SystemOverviewPage from './pages/SystemOverview';
@@ -20,7 +21,11 @@ const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: <Navigate to="/system" replace />
+        element: <Navigate to="/dashboard" replace />
+      },
+      {
+        path: 'dashboard',
+        element: <DashboardPage />
       },
       {
         path: 'device',

@@ -1,0 +1,594 @@
+% !TEX program = xelatex
+\documentclass[UTF8,11pt,a4paper]{ctexart}
+
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{amsmath}
+\usepackage{tikz}
+\usepackage{fancyhdr}
+\usetikzlibrary{positioning,arrows.meta,fit}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  urlcolor=blue!60!black,
+  citecolor=blue!60!black
+}
+
+\captionsetup{font=small,labelfont=bf}
+\setlist[itemize]{leftmargin=1.5em,itemsep=2pt,topsep=3pt}
+\setlist[enumerate]{leftmargin=1.8em,itemsep=2pt,topsep=3pt}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\todo}[1]{\textbf{待填写：}#1}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{智慧能源网监测平台系统说明文档}
+\rhead{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\title{智慧能源网监测平台系统说明文档}
+\author{项目小组}
+\date{2026年5月25日}
+
+\begin{document}
+
+\begin{titlepage}
+  \centering
+  \vspace*{2.2cm}
+  {\zihao{1}\heiti 智慧能源网监测平台\par}
+  \vspace{0.6cm}
+  {\zihao{2}\heiti 系统说明文档\par}
+  \vspace{1.4cm}
+  {\zihao{4}作业2：基于分布式数据分析的智慧能源网监测平台\par}
+  \vspace{2.0cm}
+  \begin{tabular}{rl}
+    课程名称： & \todo{课程名称}\\[0.35cm]
+    小组名称： & \todo{小组名称}\\[0.35cm]
+    组长姓名： & \todo{组长姓名}\\[0.35cm]
+    组长学号： & \todo{组长学号}\\[0.35cm]
+    指导教师： & \todo{指导教师}\\[0.35cm]
+    提交日期： & 2026年5月25日
+  \end{tabular}
+  \vfill
+  {\small 本文档用于第二阶段提交与答辩说明，覆盖数据处理方法、存储设计、算法设计思路、分析结果和展示设计。}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+\section{项目概述}
+
+本项目面向园区级智慧能源网协同监测与分析场景，构建从数据接入、数据治理、分层存储、统计分析、趋势预测到前端展示和运行建议的分布式数据分析平台。系统以课程提供的能源站采集数据和外部能源价格数据为输入，使用 Kafka、HDFS、Delta Lake、Spark、FastAPI 和 React/Vite 实现批流结合的数据分析链路。
+
+平台核心目标包括：
+
+\begin{itemize}
+  \item 支持能源采集数据的 Kafka 模拟流式接入，并保留可追溯的原始入湖记录。
+  \item 基于 Delta Lake 构建 Bronze、Silver、Gold 三层数据湖，实现点位治理、设备映射、时间对齐和缺失值处理。
+  \item 围绕冷机、热机、冷热电三联供系统生成日度、周度、月度综合报表。
+  \item 结合季节、日期类型、时段变化和历史负荷特征完成供能趋势预测，并进一步估算收益。
+  \item 通过前端页面提供设备级、主题级、系统级、报表、预测、收益和决策建议展示。
+  \item 在三台云服务器上部署 HDFS、Kafka 和 Spark 组件，并通过性能对比验证分布式处理价值。
+\end{itemize}
+
+\subsection{任务完成情况总览}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{p{2.2cm}Yp{2cm}}
+\toprule
+作业任务 & 当前实现 & 完成状态 \\
+\midrule
+任务一：数据采集 & Kafka 生产者接入能源采集数据；价格 API 以批量/增量口径接入；保留业务时间和入湖时间。 & 已实现 \\
+任务二：治理与存储 & 基于 Delta Lake 建立 full/stream 两套 Bronze、Silver、Gold 路径；Silver 完成点位映射、缺失治理和标准化；Gold 保存报表、预测、收益和建议。 & 已实现 \\
+任务三：分析计算 & 冷机、热机、三联供均生成日/周/月综合报表；使用随机森林完成统一供能趋势预测，并输出模型指标。 & 已实现 \\
+任务四：平台展示 & React 前端覆盖监测大屏、设备级查询、主题级查询、系统级展示、综合报表、供能预测、收益预测和决策建议。 & 已实现 \\
+任务五：分布式验证 & 三节点 HDFS/Kafka 部署；性能对比验证覆盖报表生成、历史查询和预测特征计算。 & 已完成基础验证 \\
+\bottomrule
+\end{tabularx}
+\caption{作业任务完成情况}
+\end{table}
+
+\section{系统架构与部署设计}
+
+\subsection{三节点部署架构}
+
+系统部署在三台华为云服务器上，按入口节点、调度节点和计算存储节点划分职责。HDFS 采用一主多从方式提供分布式存储，Kafka 使用两台 Broker 支撑消息接入，Spark Standalone 提供批处理和微批计算能力，FastAPI 和 React 部署在入口节点对外提供服务。
+
+\input{assets/fig_deployment.tex}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{p{1.7cm}p{2.7cm}p{2.4cm}Y}
+\toprule
+节点 & 公网 IP & 内网 IP & 部署组件 \\
+\midrule
+Node-1 & 115.120.208.241 & 192.168.0.94 & HDFS NameNode/DataNode、Spark Worker、FastAPI、React 前端 \\
+Node-2 & 1.94.113.240 & 192.168.1.87 & Spark Master、HDFS DataNode、Spark Worker、Kafka Broker、任务调度 \\
+Node-3 & 123.60.106.233 & 192.168.1.19 & HDFS DataNode、Spark Worker、Kafka Broker \\
+\bottomrule
+\end{tabularx}
+\caption{集群节点与部署组件}
+\end{table}
+
+\subsection{核心服务地址}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{p{2.2cm}p{4.4cm}Y}
+\toprule
+组件 & 地址或端口 & 说明 \\
+\midrule
+HDFS & \code{hdfs://node1:9000} & 三 DataNode 存储，保存 Delta Lake 数据湖。 \\
+Spark & \code{spark://node2:7077} & Spark Standalone 集群入口。 \\
+Kafka & \code{192.168.1.87:9092, 192.168.1.19:9092} & 两 Broker，承载传感器 topic。 \\
+FastAPI full & \code{http://115.120.208.241:8001} & 读取 \code{/lake/full} 的稳定全量结果。 \\
+FastAPI stream & \code{http://115.120.208.241:8002} & 读取 \code{/lake/stream} 的模拟流式结果。 \\
+React 前端 & \code{http://115.120.208.241:3001} & 前端统一入口，可切换 full/stream 数据口径。 \\
+\bottomrule
+\end{tabularx}
+\caption{核心服务地址}
+\end{table}
+
+\section{任务一：数据采集}
+
+\subsection{能源采集数据}
+
+能源采集数据来自课程镜像中的 Kafka 生产者。生产者读取本地历史采集数据，将传感器点位按 topic 推送到 Kafka。原始业务时间覆盖 2018 年 1 月、2 月、4 月、7 月、10 月，主要为北站（1 号站）的采集点。Kafka 推送过程是历史数据压缩重放，用于模拟实时接入和后续流处理，不表示设备在 2026 年真实在线。
+
+Kafka 消息保留两个时间概念：
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{p{3cm}Yp{4cm}}
+\toprule
+时间字段 & 含义 & 用途 \\
+\midrule
+\code{event\_time} & 采集点真实业务发生时间，来自 2018 年历史数据。 & 报表、趋势预测、历史查询和前端时间轴。 \\
+\code{ingest\_time}/\code{push\_time} & 消息进入 Kafka 或写入数据湖的处理时间。 & 流式模拟、水位控制、微批增量和前端实时刷新。 \\
+\bottomrule
+\end{tabularx}
+\caption{能源采集数据时间字段}
+\end{table}
+
+典型 Kafka 消息如下：
+
+\begin{verbatim}
+{
+  "sensor_id": "10LDSCS_T",
+  "label": "2#站1#冷机冷冻水出水温度",
+  "timestamp": "2018-02-01T00:04:47Z",
+  "value": 8.8,
+  "is_simulated": false,
+  "push_time": "2026-05-24T20:20:00"
+}
+\end{verbatim}
+
+\subsection{价格数据}
+
+能源供应价格数据来自外部接口：
+
+\begin{verbatim}
+http://122.9.74.124:8000/full
+\end{verbatim}
+
+价格类型包括电价、冷价和热价，课程说明中该价格数据每日 8:00 更新。系统将价格数据写入价格原始层，再治理为 \code{silver\_price\_dim}，用于收益预测。由于价格 API 是当前价格数据，而能源采集数据是 2018 年历史工况，收益预测的业务解释为：使用历史负荷模式和当前价格政策估算经济性，而不是复原 2018 年真实收益。
+
+\section{任务二：数据治理与存储}
+
+\subsection{Delta Lake 分层设计}
+
+数据湖以 HDFS 为底座，使用 Delta Lake 保存可查询、可演进、可增量更新的数据表。系统按 full 和 stream 两套命名空间隔离稳定全量结果与模拟流式结果，同时使用 control 路径记录水位和最近一批处理状态。
+
+\input{assets/fig_lake_layers.tex}
+
+\begin{verbatim}
+hdfs://node1:9000/lake/
+├── full/
+│   ├── silver/
+│   └── gold/
+├── stream/
+│   ├── bronze/bronze_streaming/
+│   ├── silver/
+│   └── gold/
+└── control/
+    ├── etl_watermark/
+    └── stream_last_batch_point_fact/
+\end{verbatim}
+
+\subsection{Bronze 层}
+
+Bronze 层保存原始或近原始数据，强调可追溯。Kafka 入湖表保留 topic、partition、offset、业务时间和入湖时间，便于问题回溯和微批水位控制。价格数据的原始快照或 binlog 解析结果同样进入 Bronze 口径。
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{p{3.5cm}p{5.2cm}Y}
+\toprule
+表 & 路径 & 说明 \\
+\midrule
+\code{bronze\_streaming} & \code{/lake/stream/bronze/bronze\_streaming} & Kafka 传感器消息入湖表，保留 topic、partition、offset、ingest\_time。 \\
+\code{bronze\_price\_raw} & Bronze 价格路径 & 外部价格 API 的原始快照或增量记录。 \\
+\bottomrule
+\end{tabularx}
+\caption{Bronze 层表设计}
+\end{table}
+
+\subsection{Silver 层}
+
+Silver 层负责标准化和治理，是后续报表、预测和展示的共同基础。主要处理包括：
+
+\begin{itemize}
+  \item 解析 \code{pos.ttl} 点位字典，建立 \code{silver\_point\_meta\_dim}，将采集点映射到系统、设备、主题、单位和测量角色。
+  \item 对原始点位明细生成 \code{silver\_point\_fact}，统一字段名、时间字段、设备字段和质量标记。
+  \item 对冷机构建 \code{silver\_chiller\_status} 宽表，聚合供水温度、回水温度、流量、压力、运行状态、运行时长等字段。
+  \item 对价格数据生成 \code{silver\_price\_dim}，完成价格类型、站点、生效日期和来源口径标准化。
+\end{itemize}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{p{3.2cm}Yp{4.1cm}}
+\toprule
+表 & 主要内容 & 逻辑主键或粒度 \\
+\midrule
+\code{silver\_point\_meta\_dim} & 点位元数据，包含 \code{point\_code}、\code{label}、\code{system\_type}、\code{equipment\_id}、\code{theme}、\code{measure\_role}。 & \code{point\_code} \\
+\code{silver\_point\_fact} & 清洗后的点位事实表，包含 \code{point\_code}、\code{event\_time}、\code{value}、\code{quality\_flag}。 & \code{point\_code} + \code{event\_time} \\
+\code{silver\_chiller\_status} & 冷机分钟级状态宽表，包含温度、流量、压力、运行状态和估算功率。 & \code{equipment\_id} + \code{event\_time} \\
+\code{silver\_price\_dim} & 冷、热、电价格维表，包含 \code{price\_type}、\code{price}、\code{effective\_date}、\code{source\_type}。 & \code{station\_code} + \code{price\_type} + \code{effective\_date} \\
+\bottomrule
+\end{tabularx}
+\caption{Silver 层核心表}
+\end{table}
+
+\subsection{缺失值处理策略}
+
+Silver 层缺失处理原则是“按指标类型治理，不统一补 0”。其中 0 表示真实零值，例如停机、无供能或瞬时负荷为零；\code{NULL} 表示点位缺失、字段不适用或该值不应参与计算。该策略避免把缺测、不适用和真实停机混淆。
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{p{2.5cm}Yp{3.5cm}}
+\toprule
+指标类型 & 处理策略 & 质量标记 \\
+\midrule
+状态型 & 短时缺失采用前值保持；超过 1 小时未更新时不伪造运行状态，只标记过期。 & \code{status\_stale} \\
+连续型 & 温度、压力、流量、功率等 5 分钟内短缺口使用上一条有效值；超过 5 分钟保留为空。 & \code{normal} 或 \code{long\_missing} \\
+累计型 & 累计能量、累计热量和运行时长不做线性补值，不补 0，避免破坏差分计算。 & \code{cumulative\_gap} \\
+价格型 & 价格维表按站点、类型和生效日期去重；收益计算使用最近可用价格，不把缺失价格补 0。 & 计算侧记录口径 \\
+不适用字段 & 不同系统点位结构不同，例如热机没有冷量点位时保留为空，前端展示“暂无数据”。 & 纳入完整率统计 \\
+\bottomrule
+\end{tabularx}
+\caption{缺失值处理策略}
+\end{table}
+
+\subsection{Gold 层}
+
+Gold 层面向业务分析和前端展示，保存小时级统一宽表、周期报表、趋势预测、收益预测和运行建议。
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{p{4.4cm}Y}
+\toprule
+表 & 用途 \\
+\midrule
+\code{gold\_system\_supply\_hourly} & 冷机、热机、三联供统一小时表，前端查询和报表计算的核心事实表。 \\
+\code{gold\_system\_report\_daily} & 日度综合报表，包含峰值、谷值、总供能、峰谷时长、能效和异常统计。 \\
+\code{gold\_system\_report\_weekly} & 周度综合报表。 \\
+\code{gold\_system\_report\_monthly} & 月度综合报表。 \\
+\code{gold\_system\_forecast\_supply} & 未来 24 小时供能趋势预测结果。 \\
+\code{gold\_system\_forecast\_metrics} & 预测模型训练与评估指标。 \\
+\code{gold\_system\_revenue\_forecast} & 基于供能预测和价格维表的收益预测。 \\
+\code{gold\_operation\_advice} & 运行分析和决策建议。 \\
+\bottomrule
+\end{tabularx}
+\caption{Gold 层核心表}
+\end{table}
+
+\subsection{冷机、热机和三联供字段映射}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{p{2cm}Y Y Y}
+\toprule
+系统 & 原始点位类型 & Silver 处理 & Gold 指标 \\
+\midrule
+冷机 & 供回水温度、流量、压力、运行状态、运行时长、启动次数。 & 由 \code{silver\_point\_fact} 透视为 \code{silver\_chiller\_status}；缺少实测功率时按水侧冷量和固定 COP 估算。 & \code{cooling\_supply\_kwh}、\code{supply\_kwh}、运行率、估算能耗、COP。 \\
+热机 & 锅炉/燃烧器状态、温度、压力、燃气或热量累计点。 & 在统一点位事实表中按系统和设备聚合，累计量按小时差分，异常负差分或跳变不参与计算。 & \code{heating\_supply\_kwh}、\code{supply\_kwh}、能耗和运行率。 \\
+三联供 & 累计冷量、累计热量、发电量、燃气量等点位。 & 冷、热、电累计量分别按小时差分，燃气量换算为能源输入。 & \code{cooling\_supply\_kwh}、\code{heating\_supply\_kwh}、\code{electric\_supply\_kwh} 和总 \code{supply\_kwh}。 \\
+\bottomrule
+\end{tabularx}
+\caption{不同系统的数据处理口径}
+\end{table}
+
+累计量差分的基本口径为：
+
+\[
+  \Delta E_h = E_{h,\mathrm{end}} - E_{h-1,\mathrm{end}}
+\]
+
+若 \(\Delta E_h < 0\) 或超过设备合理阈值，则判定为仪表重置、数据跳变或异常，本小时该累计量不参与供能计算。冷机水侧供冷能力采用如下估算：
+
+\[
+  Q_{\mathrm{cooling}} = 1.163 \times \mathrm{flow} \times (T_{\mathrm{return}} - T_{\mathrm{supply}})
+\]
+
+当缺少明确实测功率点位时，能耗按照固定 COP 进行保守估算，并在数据质量字段中保留估算口径。
+
+\section{全量批处理与模拟流式处理}
+
+\subsection{全量模式}
+
+全量模式读取已有历史数据，一次性生成 Silver 和 Gold 表，结果存放在 \code{/lake/full}。该模式结果稳定，适合提交展示、历史分析和模型训练。全量后端读取 \code{ENERGY\_DATA\_MODE=full}，默认访问 \code{hdfs://node1:9000/lake/full}。
+
+\subsection{模拟流式模式}
+
+流式模式用于展示实时接入和微批增量刷新能力。Kafka 生产者持续压缩重放历史采集数据；Spark Structured Streaming 将新消息写入 stream Bronze；随后 5 分钟微批脚本根据水位只处理新增数据，并把受影响窗口增量合并到 Silver 和 Gold。
+
+\input{assets/fig_stream_microbatch.tex}
+
+流式模式的关键机制如下：
+
+\begin{itemize}
+  \item Kafka-to-Bronze 使用 latest offset 切换，避免每次启动重放历史 backlog。
+  \item \code{etl\_watermark} 记录 Silver 已处理的最大 \code{ingest\_time}。
+  \item \code{stream\_last\_batch\_point\_fact} 保存本轮微批明细，下游只重算受影响分钟、小时或周期。
+  \item 当本轮新增 Bronze 行数为 0 时跳过下游 Gold 刷新，避免无效重算。
+\end{itemize}
+
+\section{任务三：数据分析计算}
+
+\subsection{综合报表生成}
+
+综合报表围绕冷机、热机和冷热电三联供三个系统，生成日度、周度和月度报表。报表基于 \code{gold\_system\_supply\_hourly} 聚合，统一输出到 \code{gold\_system\_report\_daily}、\code{gold\_system\_report\_weekly} 和 \code{gold\_system\_report\_monthly}。
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{p{3.6cm}Y}
+\toprule
+指标 & 计算口径 \\
+\midrule
+总供能量 & 周期内 \code{supply\_kwh} 求和。 \\
+总供冷量/供热量/供电量 & 周期内对应分项字段求和。 \\
+峰值供能量 & 周期内小时 \code{supply\_kwh} 最大值。 \\
+谷值供能量 & 周期内非零小时 \code{supply\_kwh} 最小值。 \\
+峰值期时长 & 供能量接近周期峰值的小时数，作为高负荷运行时长。 \\
+谷值期时长 & 供能量接近周期非零谷值的小时数，作为低负荷运行时长。 \\
+设备利用率 & 运行小时或平均运行率相对周期总小时的比例。 \\
+能效指标 & 总供能量与总能耗的比值；冷机口径可解释为估算 COP。 \\
+异常统计 & 依据质量标记、异常负荷、异常能效和缺失情况计数。 \\
+\bottomrule
+\end{tabularx}
+\caption{综合报表指标口径}
+\end{table}
+
+\subsection{供能趋势预测算法}
+
+趋势预测目标是对冷机、热机和三联供系统的未来 24 小时 \code{supply\_kwh} 进行预测。当前统一模型为 \code{RandomForestRegressor}，输出预测结果和模型评估指标。
+
+\paragraph{特征设计}
+特征分为时间特征、季节特征、历史负荷特征和设备状态特征：
+
+\begin{itemize}
+  \item 时间特征：小时、星期、是否周末、小时周期 \(\sin/\cos\) 编码。
+  \item 季节特征：月份、季节、是否供冷季或供热季。
+  \item 历史负荷：\code{lag\_1h}、\code{lag\_24h}、\code{rolling\_mean\_24h}、\code{rolling\_max\_24h}。
+  \item 设备状态：最近运行率、最近 24 小时供能量、当前运行状态。
+  \item 系统类型：冷机、热机和三联供按设备或系统分组训练和预测。
+\end{itemize}
+
+\paragraph{时间窗口构造}
+按时间顺序划分训练集和测试集，避免未来数据泄漏。较早 80\% 的小时序列作为训练集，较晚 20\% 作为测试集；预测窗口从最后一个历史小时之后开始，向后生成 24 小时预测。
+
+\paragraph{模型选择依据}
+随机森林适合本项目的原因包括：能够处理非线性的负荷关系；对特征尺度不敏感；对缺失、异常和小样本相对稳健；训练速度较快，适合多设备批量建模；可通过特征重要性和误差指标进行解释。相比 LSTM 等深度模型，该方案更适合当前数据量、项目周期和答辩可解释性要求。
+
+\paragraph{训练与评估}
+模型评估指标包括 MAE、RMSE、MAPE 和 \(R^2\)。训练完成后，模型指标写入 \code{gold\_system\_forecast\_metrics}，预测结果写入 \code{gold\_system\_forecast\_supply}。当设备最近处于停机状态时，预测曲线不强制归零，而解释为“在历史季节、日期、时段和负荷模式下的趋势需求”，前端和建议层标注“当前停机，预测仅代表趋势需求”。
+
+\subsection{收益预测算法}
+
+收益预测基于供能预测和价格维表计算未来收益。核心公式为：
+
+\[
+\begin{aligned}
+  \mathrm{Cost} &= E_{\mathrm{consume}} \times P_{\mathrm{electricity}} \\
+  \mathrm{Income} &= Q_{\mathrm{cooling}} \times P_{\mathrm{cooling}}
+  + Q_{\mathrm{heating}} \times P_{\mathrm{heating}}
+  + Q_{\mathrm{electric}} \times P_{\mathrm{electricity}} \\
+  \mathrm{Profit} &= \mathrm{Income} - \mathrm{Cost}
+\end{aligned}
+\]
+
+由于价格数据与能源数据时间不完全重合，收益结果表示“当前价格政策下的历史工况经济性估算”。这一路径适合用于比较不同系统或设备的经济性趋势，不应解释为 2018 年真实结算收益。
+
+\section{分析结果}
+
+\subsection{数据规模与覆盖情况}
+
+根据项目审计文档和当前数据湖口径，全量模式已经完成从 Silver 到 Gold 的主要处理。关键数据规模如下：
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{p{4.3cm}p{3.2cm}Y}
+\toprule
+数据表或对象 & 记录数 & 说明 \\
+\midrule
+\code{silver\_point\_fact} & 6,117,217 & 与 Bronze 原始采集数据一致，点位 Join 放大问题已修复。 \\
+\code{silver\_chiller\_status} & 403,820 & 冷机分钟级状态宽表，包含温度、流量、压力、运行状态等字段。 \\
+\code{silver\_price\_dim} & 645 & 冷、热、电三类价格维表。 \\
+\code{gold\_system\_supply\_hourly} & 53,884 & 统一小时供能表，覆盖 15 个设备或系统对象。 \\
+\code{gold\_system\_report\_daily} & 2,265 & 日度综合报表。 \\
+\code{gold\_system\_report\_weekly} & 690 & 周度综合报表。 \\
+\code{gold\_system\_report\_monthly} & 75 & 月度综合报表。 \\
+\code{gold\_system\_forecast\_supply} & 360 & 15 个对象未来 24 小时预测结果。 \\
+\code{gold\_system\_forecast\_metrics} & 15 & 覆盖 10 台冷机、4 台热机和 1 个三联供系统的模型评估指标。 \\
+\bottomrule
+\end{tabularx}
+\caption{全量模式关键数据规模}
+\end{table}
+
+统一小时表中，冷机约 35,900 行，热机约 14,360 行，三联供约 3,624 行。该结果说明 Gold 层已不再只覆盖冷机，而是能够支撑作业要求中的冷机、热机和冷热电三联供展示、报表和预测。
+
+\subsection{数据质量结论}
+
+当前 Silver 层的点位事实表核心字段完整，\code{value}、\code{event\_time}、\code{point\_code} 和 \code{quality\_flag} 无空值。设备宽表中存在空字段属于合理情况，原因包括源数据中不存在对应点位、某设备该时间未运行、某系统不适用该指标或累计量不应补值。前端展示应区分 0 与 \code{NULL}：0 表示真实零负荷或停机，\code{NULL} 表示暂无该主题或该字段不适用。
+
+\section{任务四：平台展示与业务分析}
+
+前端使用 React/Vite 构建，图表组件以 ECharts 为主。后端使用 FastAPI 提供统一查询接口，通过 PySpark 读取 HDFS 上的 Delta 表。系统支持 full 和 stream 两种数据模式切换，其中 full 模式展示稳定全量结果，stream 模式展示 Kafka 模拟流式与 5 分钟微批刷新结果。
+
+\input{assets/fig_frontend_flow.tex}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{p{2.5cm}p{2.4cm}Y}
+\toprule
+页面 & 路由 & 展示设计 \\
+\midrule
+监测大屏 & \code{/system} & 展示系统 KPI、设备运行状态、近 24 小时供能趋势、预测与建议摘要。 \\
+设备级查询 & \code{/device} & 按设备查询历史小时数据，支持冷机、热机和三联供设备。 \\
+主题级查询 & \code{/theme} & 按温度、流量、压力、能耗等主题查询系统内采集点或聚合指标。 \\
+综合报表 & \code{/reports} & 支持日度、周度、月度报表，展示峰谷、总供能、峰谷时长、利用率和能效。 \\
+供能预测 & \code{/forecast} & 展示未来 24 小时供能预测曲线、模型评估指标和运行建议。 \\
+收益预测 & \code{/revenue} & 根据供能预测和价格维表展示收入、成本、利润及利润率。 \\
+\bottomrule
+\end{tabularx}
+\caption{前端展示页面设计}
+\end{table}
+
+前端状态语义采用“运行/停机/无最近数据”，不使用真实设备“在线/离线”心跳口径。实时更新能力来自 Kafka 模拟流式产生数据、Bronze 入湖、5 分钟微批刷新 Silver/Gold 以及前端定时重新请求接口。
+
+\subsection{运行分析与决策建议}
+
+运行建议由 \code{gold\_operation\_advice} 和后端规则接口提供。建议依据包括当前设备运行率、最近供能量、预测供能量、能效指标、异常质量标记和收益预测结果。典型建议包括：
+
+\begin{itemize}
+  \item 当预测负荷偏低且设备仍保持运行时，建议降低流量或减少运行设备数量。
+  \item 当预测负荷上升且当前设备停机时，提示预测仅代表趋势需求，需要结合实际工况确认启停。
+  \item 当能效偏低或异常点增多时，提示检查温差、流量、压力或计量点质量。
+  \item 当收益预测为负或利润率偏低时，提示调整供能策略或关注电价、冷价、热价变化。
+\end{itemize}
+
+\section{任务五：分布式有效性验证}
+
+本项目选择性能对比验证作为任务五实现路径，同时保留三节点部署和日志展示脚本用于答辩演示。验证目标是比较同一批分析任务在单线程和并行执行下的耗时差异，证明 HDFS + Spark 架构对报表生成、历史查询和预测特征计算具备并行处理收益。
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{p{3.7cm}p{3.4cm}p{3.4cm}p{2cm}}
+\toprule
+任务 & 单线程平均耗时 & 并行平均耗时 & 加速比 \\
+\midrule
+综合报表生成 & 9.8171 s & 4.1922 s & 2.342x \\
+历史窗口查询 & 9.0616 s & 4.5847 s & 1.976x \\
+预测特征计算 & 11.2088 s & 6.1015 s & 1.837x \\
+\bottomrule
+\end{tabularx}
+\caption{分布式有效性性能对比结果}
+\end{table}
+
+验证数据基于 \code{gold\_system\_supply\_hourly}，原始记录 53,884 行，通过放大因子构造 1,077,680 行分析负载。三类任务在单线程和并行模式下输出行数一致，关键 checksum 一致或仅存在浮点聚合顺序造成的微小误差。因此，平台在相同业务逻辑下获得了约 1.84 到 2.34 倍加速，满足作业中“性能对比验证”的要求。
+
+答辩演示可使用 \code{scripts/demo-infra-evidence.sh} 展示以下证据：
+
+\begin{itemize}
+  \item 三节点 HDFS DataNode 状态和块健康情况。
+  \item Kafka 生产者状态与 Kafka-to-Bronze 入湖日志。
+  \item HDFS Delta Lake 的 full/stream 三层路径。
+\end{itemize}
+
+\section{运行方式与提交说明}
+
+\subsection{常用启动命令}
+
+\begin{verbatim}
+cd /home/student/energy-platform
+
+# 启动 full 后端
+./scripts/start-backend-mode.sh full
+
+# 启动 stream 后端
+./scripts/start-backend-mode.sh stream
+
+# Kafka 到 stream Bronze
+./scripts/start-kafka-to-bronze.sh
+
+# 运行 5 分钟微批循环
+./scripts/run-stream-microbatch.sh loop
+
+# 重置 stream 为只处理 Kafka latest 之后的新数据
+./scripts/reset-stream-to-latest.sh
+\end{verbatim}
+
+前端启动命令：
+
+\begin{verbatim}
+cd /home/student/energy-platform/frontend-new
+npm run dev -- --host 0.0.0.0 --port 3001
+\end{verbatim}
+
+\subsection{已知限制与答辩口径}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{p{3.3cm}Y}
+\toprule
+限制 & 说明 \\
+\midrule
+能源数据是历史数据 & Kafka 重放的是 2018 年历史采集数据，实时性体现为处理链路实时刷新，不代表 2026 年真实设备心跳。 \\
+价格与能源时间不重合 & 收益预测表示当前价格政策下的历史工况经济性估算，不解释为 2018 年真实收益。 \\
+冷机功率存在估算 & 原始点位缺少明确实测功率时，系统使用水侧供冷量和固定 COP 保守估算，并保留质量口径。 \\
+热机和三联供字段不完全一致 & 不同系统点位结构不同，缺失或不适用字段保留为空，不伪造数据。 \\
+本机未安装 LaTeX 编译器 & 本文档源码可在 Overleaf 或安装 TeX Live 后使用 XeLaTeX 编译。 \\
+\bottomrule
+\end{tabularx}
+\caption{已知限制与解释口径}
+\end{table}
+
+\section{组员分工}
+
+提交前请小组补全姓名、学号和贡献比例。
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{p{2.6cm}p{3cm}Yp{2.2cm}}
+\toprule
+姓名 & 学号 & 主要分工 & 贡献比例 \\
+\midrule
+\todo{姓名} & \todo{学号} & 集群部署、HDFS/Kafka/Spark 配置、分布式验证。 & \todo{比例} \\
+\todo{姓名} & \todo{学号} & 数据湖治理、Silver/Gold 处理、报表与预测算法。 & \todo{比例} \\
+\todo{姓名} & \todo{学号} & FastAPI、React 前端、展示设计、文档和演示视频。 & \todo{比例} \\
+\bottomrule
+\end{tabularx}
+\caption{组员分工与贡献比例}
+\end{table}
+
+\section{总结}
+
+本项目完成了作业要求中的多源接入、规范化数据湖、综合报表、供能趋势预测、收益预测、前端展示和分布式有效性验证。系统在工程上形成 full 和 stream 两套数据口径：full 模式用于稳定历史分析与提交展示，stream 模式用于展示 Kafka 模拟流式和 5 分钟微批增量刷新能力。业务上，平台从原始点位治理到冷机、热机和冷热电三联供 Gold 报表，再到趋势预测和运行建议，形成了完整的智慧能源网数据分析闭环。
+
+\end{document}

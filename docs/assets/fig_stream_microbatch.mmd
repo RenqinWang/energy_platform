@@ -1,0 +1,25 @@
+flowchart LR
+  P["Kafka 生产者<br/>历史数据压缩重放"]
+  K["Kafka topics<br/>sensor_*"]
+  B["stream Bronze<br/>bronze_streaming"]
+  S["stream Silver<br/>silver_point_fact"]
+  G["stream Gold<br/>报表 / 预测 / 收益"]
+
+  O["latest offset<br/>避免重放 backlog"]
+  W["etl_watermark<br/>ingest_time 水位"]
+  L["last_batch<br/>只重算受影响窗口"]
+
+  P --> K
+  K -->|Structured Streaming| B
+  B -->|5 分钟微批| S
+  S -->|Delta merge| G
+  O -.控制.-> B
+  W -.控制.-> S
+  L -.控制.-> G
+
+  classDef stream fill:#fff7ed,stroke:#f97316,stroke-width:1px,color:#111827;
+  classDef lake fill:#ecfdf5,stroke:#22c55e,stroke-width:1px,color:#111827;
+  classDef control fill:#fefce8,stroke:#eab308,stroke-width:1px,color:#111827;
+  class P,K stream;
+  class B,S,G lake;
+  class O,W,L control;

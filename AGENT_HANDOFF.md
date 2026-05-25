@@ -66,6 +66,5 @@ Kafka realtime path:
 - `scripts/verify_silver_governance.py`
 - `DATA_METRICS_EXPLANATION.md`
 - `docs/DATA_COMPLETENESS_ANALYSIS.md`
-- `docs/PROJECT_COMPLETION_SUMMARY.md`
-- `frontend/js/table.js`
-
+- `docs/FINAL_SYSTEM_DESCRIPTION.md` is the current final口径; older summaries are under `docs/archive/`.
+- `frontend-new/` is the active React/Vite frontend; the old static `frontend/` tree has been removed.

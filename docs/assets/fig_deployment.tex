@@ -1,0 +1,49 @@
+\begin{figure}[H]
+  \centering
+  \resizebox{\textwidth}{!}{%
+  \begin{tikzpicture}[
+      font=\small,
+      node distance=1.2cm,
+      server/.style={draw, rounded corners=3pt, align=left, minimum width=5.2cm, minimum height=2.2cm, fill=blue!4},
+      service/.style={draw, rounded corners=2pt, align=center, fill=white, inner sep=4pt},
+      link/.style={-Latex, thick},
+      dbl/.style={Latex-Latex, thick}
+    ]
+    \node[server] (n1) {
+      \textbf{Node-1 入口节点}\\
+      公网：115.120.208.241\\
+      内网：192.168.0.94\\
+      NameNode / DataNode\\
+      Spark Worker / FastAPI / React
+    };
+    \node[server, right=1.2cm of n1] (n2) {
+      \textbf{Node-2 调度节点}\\
+      公网：1.94.113.240\\
+      内网：192.168.1.87\\
+      Spark Master / Worker\\
+      DataNode / Kafka Broker
+    };
+    \node[server, right=1.2cm of n2] (n3) {
+      \textbf{Node-3 计算存储节点}\\
+      公网：123.60.106.233\\
+      内网：192.168.1.19\\
+      DataNode / Spark Worker\\
+      Kafka Broker
+    };
+
+    \node[service, below=1.1cm of n1] (frontend) {React 前端\\端口 3001};
+    \node[service, below=1.1cm of n2] (spark) {Spark Standalone\\spark://node2:7077};
+    \node[service, below=1.1cm of n3] (kafka) {Kafka 集群\\9092};
+    \node[service, below=1.2cm of spark, minimum width=7.2cm, fill=green!6] (hdfs) {HDFS + Delta Lake\\hdfs://node1:9000/lake};
+
+    \draw[dbl] (n1) -- node[above]{HDFS block replication} (n2);
+    \draw[dbl] (n2) -- node[above]{HDFS/Kafka/Spark} (n3);
+    \draw[link] (frontend) -- node[left]{HTTP API} (n1);
+    \draw[link] (kafka) -- node[right]{Kafka topics} (hdfs);
+    \draw[link] (spark) -- node[right]{ETL / SQL} (hdfs);
+    \draw[link] (hdfs) -- node[left]{Delta query} (frontend);
+  \end{tikzpicture}%
+  }
+  \caption{三节点分布式部署架构}
+  \label{fig:deployment}
+\end{figure}

@@ -154,6 +154,25 @@ const formatThemeValue = (selectedTheme: ThemeType, value: number): string => {
   }
 };
 
+const averageMetricTitle = (selectedTheme: ThemeType) => {
+  switch (selectedTheme) {
+    case 'supply':
+      return '平均供能量';
+    case 'energy':
+      return '平均能耗';
+    case 'temperature':
+      return '平均温度';
+    case 'flow':
+      return '平均流量';
+    case 'pressure':
+      return '平均压力';
+    case 'operation':
+      return '平均运行率';
+    default:
+      return '平均值';
+  }
+};
+
 export default function ThemeQueryPage() {
   const [systemFilter, setSystemFilter] = useState<SystemFilter>('all');
   const [equipmentOptions, setEquipmentOptions] = useState<EquipmentOption[]>([]);
@@ -515,7 +534,7 @@ export default function ThemeQueryPage() {
             <Col xs={24} sm={12} lg={6}>
               <Card>
                 <Statistic
-                  title={`平均${selectedThemeConfig.label}`}
+                  title={averageMetricTitle(selectedTheme)}
                   value={overallAvg}
                   precision={2}
                   suffix={selectedThemeConfig.unit}

@@ -5,6 +5,7 @@ import { ArrowDownOutlined, ArrowUpOutlined, SyncOutlined } from '@ant-design/ic
 import BaseChart from '../../components/Charts/BaseChart';
 import Loading from '../../components/Common/Loading';
 import { getSystemEquipment, getSystemSupplyCurve } from '../../api/report';
+import { useAppStore } from '../../store/useAppStore';
 import { createTimeSeriesChartOption } from '../../utils/chart';
 import {
   formatDate,
@@ -72,7 +73,11 @@ const hasPositive = (data: SystemSupplyCurveRecord[], field: keyof SystemSupplyC
   data.some((item) => n(item[field] as number | null | undefined) > 0);
 
 export default function DeviceQueryPage() {
-  const [systemType, setSystemType] = useState<SystemType>('chiller');
+  const storeSystemType = useAppStore((state) => state.systemType);
+  const storeEquipmentId = useAppStore((state) => state.equipmentId);
+  const setStoreSystemType = useAppStore((state) => state.setSystemType);
+  const setStoreEquipmentId = useAppStore((state) => state.setEquipmentId);
+  const [systemType, setSystemType] = useState<SystemType>(storeSystemType || 'chiller');
   const [equipmentList, setEquipmentList] = useState<string[]>([]);
   const [selectedEquipment, setSelectedEquipment] = useState<string>('');
   const [rangeMode, setRangeMode] = useState<RangeMode>('latest_96');
@@ -95,7 +100,10 @@ export default function DeviceQueryPage() {
 
         const sorted = equipment.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
         setEquipmentList(sorted);
-        setSelectedEquipment(sorted.includes('chiller_10') ? 'chiller_10' : sorted[0] || '');
+        const preferred = storeEquipmentId && sorted.includes(storeEquipmentId)
+          ? storeEquipmentId
+          : sorted.includes('chiller_10') ? 'chiller_10' : sorted[0] || '';
+        setSelectedEquipment(preferred);
       } catch (error) {
         console.error('Failed to load equipment:', error);
         if (!cancelled) {
@@ -112,7 +120,7 @@ export default function DeviceQueryPage() {
     return () => {
       cancelled = true;
     };
-  }, [systemType]);
+  }, [storeEquipmentId, systemType]);
 
   useEffect(() => {
     if (!selectedEquipment) return;
@@ -341,7 +349,11 @@ export default function DeviceQueryPage() {
                 <span style={{ fontWeight: 500 }}>系统:</span>
                 <Select
                   value={systemType}
-                  onChange={setSystemType}
+                  onChange={(value) => {
+                    setSystemType(value);
+                    setStoreSystemType(value);
+                    setStoreEquipmentId(undefined);
+                  }}
                   style={{ width: 180 }}
                   options={systemOptions}
                 />
@@ -350,7 +362,10 @@ export default function DeviceQueryPage() {
                 <span style={{ fontWeight: 500 }}>设备:</span>
                 <Select
                   value={selectedEquipment || undefined}
-                  onChange={setSelectedEquipment}
+                  onChange={(value) => {
+                    setSelectedEquipment(value);
+                    setStoreEquipmentId(value);
+                  }}
                   placeholder="请选择设备"
                   style={{ width: 220 }}
                   options={equipmentList.map((equipmentId) => ({

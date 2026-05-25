@@ -12,6 +12,39 @@
 - 冷机没有实测功率点位，`power` 已在 Silver 层按水侧冷量和固定 COP 做保守估算。
 - `silver_point_fact` 记录数为 6,117,217，与 `bronze_sensor_raw` 一致，不再存在 Join 放大。
 
+## Silver 缺失值处理策略
+
+Silver 层的缺失处理原则是“按指标类型治理，不统一补 0”。`0` 和 `NULL` 在本项目中含义不同：`0` 是设备停机、无供能或瞬时负荷为零等实际读数；`NULL` 是点位缺失、字段不适用或治理后不应参与计算的值。
+
+| 指标类型 | 处理策略 | 质量标记 |
+|---|---|---|
+| 状态型字段 | 短时缺失采用前值保持；超过 1 小时未更新时，不伪造运行状态，只标记过期 | `status_stale` |
+| 连续型字段 | 温度、压力、流量、功率等 5 分钟内短缺口采用上一条有效值填充；超过 5 分钟保留为空 | `normal` / `long_missing` |
+| 累计型字段 | 累计能量、累计热量、运行时长不做线性插值，也不补 0，避免破坏差分计算 | `cumulative_gap` |
+| 价格字段 | Silver 价格维表做去重和生效日期标准化；收益计算使用最近可用价格口径，不把缺失价格补 0 | 计算侧记录口径 |
+| 系统不适用字段 | 热机、三联供、冷机之间点位结构不同，不存在的主题字段保留为空，前端展示为暂无数据 | 完整率统计 |
+
+当前实现差异：
+
+- 全量 Silver：`data-processing/silver-layer/generate_point_fact.py` 的 `handle_missing_values` 已实现状态型、连续型和累计型的缺失治理。
+- 流式 Silver：`data-processing/stream/stream_microbatch_silver.py` 当前只对空值打 `quality_flag = missing`，没有做跨批次前值填充；这是后续增强项。
+- 冷机状态宽表：`silver_chiller_status` 是由 `silver_point_fact` 透视聚合得到的设备宽表。某些字段为空不一定是错误，可能是源点位本身没有该设备、该时间点或该主题的数据。
+
+## 2026-05-24 Silver 空值审计结论
+
+本次审计同时检查了 `/lake/full/silver`、`/lake/stream/silver` 和旧 `/lake/silver`。结论如下：
+
+| 路径 | 表 | 记录数 | 核心空值情况 |
+|---|---:|---:|---|
+| `/lake/full/silver` | `silver_point_meta_dim` | 302 | `point_code`、`system_type`、`equipment_id`、`theme`、`unit` 均无空值；`measure_role` 有 88 个空值，属于未细分角色的通用点位 |
+| `/lake/full/silver` | `silver_point_fact` | 6,117,217 | `value`、`event_time`、`point_code`、`quality_flag` 均无空值；`quality_flag` 全部为 `normal` |
+| `/lake/full/silver` | `silver_chiller_status` | 403,820 | 宽表字段存在合理空值：`supply_temp` 空 8,928，`pressure` 空 39,446，`power` 空 354,759，`runtime_hours` 空 31,587；没有整行指标全空 |
+| `/lake/full/silver` | `silver_price_dim` | 645 | `station_code`、`price_type`、`price`、`effective_date`、`source_type`、`price_year_month` 均无空值 |
+| `/lake/stream/silver` | `silver_point_fact` | 1,528,492 | `value`、`event_time`、`point_code`、`quality_flag` 均无空值；`quality_flag` 全部为 `normal` |
+| `/lake/stream/silver` | `silver_chiller_status` | 69,887 | 由于当前只处理已流入的模拟增量，宽表字段空值比 full 更明显；没有整行指标全空 |
+
+因此，当前 Silver 层不是“没有任何空字段”，而是“标准化点位明细和价格维表核心字段完整；设备宽表按点位可用性保留空值”。这些空值不能统一补 0，否则会把缺测、不适用字段和真实停机零值混淆。
+
 ## 当前数据完整性统计
 
 ### Silver 点位字典 (`silver_point_meta_dim`)
@@ -140,4 +173,4 @@ bronze_sensor_raw
 
 ---
 
-文档更新时间: 2026-05-23
+文档更新时间: 2026-05-24

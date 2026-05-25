@@ -74,7 +74,7 @@ services:
       KAFKA_PRODUCER_LINGER_MS: "1"
       DATA_DIR: "/data/positions"
       METADATA_FILE: "/data/pos.ttl"
-      DEFAULT_PUSH_INTERVAL_MS: "5"
+      DEFAULT_PUSH_INTERVAL_MS: "260"
       LOOP_STREAMING: "false"
       LOG_LEVEL: "INFO"
       API_HOST: "0.0.0.0"

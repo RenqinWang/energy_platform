@@ -1,5 +1,7 @@
 # 能源平台数据治理与前端完善 - 最终完成报告
 
+> 注意：本文档是 2026-05-23 的阶段性完成报告，未覆盖后续 full/stream 双模式、5 分钟微批增量、热机/三联供统一 Gold 口径等调整。最终提交和答辩口径以 [FINAL_SYSTEM_DESCRIPTION.md](/home/student/energy-platform/docs/FINAL_SYSTEM_DESCRIPTION.md) 为准。
+
 ## 完成时间
 2026-05-23
 

@@ -1,5 +1,7 @@
 # 供能预测与运行建议功能实现总结
 
+> 注意：本文档记录的是早期预测与建议实现，其中 XGBoost 和旧表名为阶段性口径。当前统一说明采用 RandomForestRegressor、统一系统 Gold 表和 `random_forest_system_v3` 口径；最终提交和答辩以 [FINAL_SYSTEM_DESCRIPTION.md](/home/student/energy-platform/docs/FINAL_SYSTEM_DESCRIPTION.md) 为准。
+
 **实施日期**: 2026-05-23  
 **实施人员**: Claude Opus 4.6  
 **状态**: ✅ 已完成

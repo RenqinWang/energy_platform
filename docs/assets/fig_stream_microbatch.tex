@@ -1,0 +1,32 @@
+\begin{figure}[H]
+  \centering
+  \resizebox{\textwidth}{!}{%
+  \begin{tikzpicture}[
+      font=\small,
+      box/.style={draw, rounded corners=3pt, align=center, minimum width=3.0cm, minimum height=1.0cm, fill=white},
+      store/.style={draw, rounded corners=3pt, align=center, minimum width=3.2cm, minimum height=1.0cm, fill=green!8},
+      ctl/.style={draw, rounded corners=3pt, align=center, minimum width=3.4cm, minimum height=0.9cm, fill=yellow!12},
+      arrow/.style={-Latex, very thick}
+    ]
+    \node[box, fill=orange!10] (producer) {Kafka 生产者\\历史数据压缩重放};
+    \node[box, right=0.85cm of producer, fill=orange!10] (kafka) {Kafka topics\\sensor\_\ensuremath{*}};
+    \node[store, right=0.85cm of kafka] (bronze) {stream Bronze\\bronze\_streaming};
+    \node[store, right=0.85cm of bronze] (silver) {stream Silver\\silver\_point\_fact};
+    \node[store, right=0.85cm of silver] (gold) {stream Gold\\报表/预测/收益};
+
+    \node[ctl, below=1.0cm of bronze] (offset) {latest offset\\避免重放 backlog};
+    \node[ctl, below=1.0cm of silver] (watermark) {etl\_watermark\\ingest\_time 水位};
+    \node[ctl, below=1.0cm of gold] (lastbatch) {last\_batch\\只重算受影响窗口};
+
+    \draw[arrow] (producer) -- (kafka);
+    \draw[arrow] (kafka) -- node[above]{Structured Streaming} (bronze);
+    \draw[arrow] (bronze) -- node[above]{5 分钟微批} (silver);
+    \draw[arrow] (silver) -- node[above]{Delta merge} (gold);
+    \draw[arrow] (offset) -- (bronze);
+    \draw[arrow] (watermark) -- (silver);
+    \draw[arrow] (lastbatch) -- (gold);
+  \end{tikzpicture}%
+  }
+  \caption{Kafka 到 Gold 的模拟流式微批链路}
+  \label{fig:stream}
+\end{figure}

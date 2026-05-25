@@ -5,6 +5,9 @@
 从 silver_point_fact 筛选冷机系统数据，按设备聚合生成宽表
 """
 
+import os
+
+from delta.tables import DeltaTable
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
     col, when, max as spark_max, count, current_timestamp, date_format
@@ -12,13 +15,98 @@ from pyspark.sql.functions import (
 
 COOLING_CAPACITY_FACTOR = 1.163
 ESTIMATED_CHILLER_COP = 3.0
+HDFS_ROOT = os.getenv("HDFS_LAKE_PATH", "hdfs://node1:9000/lake")
+CONTROL_ROOT = os.getenv("HDFS_CONTROL_PATH", "hdfs://node1:9000/lake/control")
+BATCH_POINT_FACT = f"{CONTROL_ROOT}/stream_last_batch_point_fact"
+
+
+def is_incremental_mode():
+    return os.getenv("STREAM_INCREMENTAL", "false").lower() == "true"
+
+
+def is_delta_table(spark, path):
+    try:
+        return DeltaTable.isDeltaTable(spark, path)
+    except Exception:
+        return False
+
+
+def path_exists(spark, path):
+    try:
+        hadoop_path = spark.sparkContext._jvm.org.apache.hadoop.fs.Path(path)
+        fs = hadoop_path.getFileSystem(spark.sparkContext._jsc.hadoopConfiguration())
+        return fs.exists(hadoop_path)
+    except Exception:
+        return False
+
+
+def read_batch_point_fact(spark):
+    if not path_exists(spark, BATCH_POINT_FACT):
+        return None
+    try:
+        return spark.read.parquet(BATCH_POINT_FACT)
+    except Exception:
+        if is_delta_table(spark, BATCH_POINT_FACT):
+            return spark.read.format("delta").load(BATCH_POINT_FACT)
+        raise
+
+
+def write_chiller_status(spark, df_status, output_path, incremental):
+    if incremental and is_delta_table(spark, output_path):
+        print("   🔁 增量合并 Silver 层冷机状态宽表")
+        (
+            DeltaTable.forPath(spark, output_path)
+            .alias("t")
+            .merge(
+                df_status.alias("s"),
+                "t.station_id = s.station_id "
+                "AND t.equipment_id = s.equipment_id "
+                "AND t.stat_time = s.stat_time",
+            )
+            .whenMatchedUpdateAll()
+            .whenNotMatchedInsertAll()
+            .execute()
+        )
+        return
+
+    df_status.write \
+        .format("delta") \
+        .mode("overwrite") \
+        .option("overwriteSchema", "true") \
+        .partitionBy("dt") \
+        .save(output_path)
+
+
+def load_affected_chiller_minutes(spark, incremental):
+    batch_df = read_batch_point_fact(spark) if incremental else None
+    if batch_df is None:
+        return None
+
+    affected = (
+        batch_df
+        .filter(col("system_type") == "chiller")
+        .withColumn("stat_time", date_format(col("event_time"), "yyyy-MM-dd HH:mm:00"))
+        .select("station_id", "stat_time")
+        .distinct()
+    )
+    if affected.limit(1).count() == 0:
+        print("   🔁 增量模式，本轮没有冷机分钟受影响")
+        return affected
+    print("   🔁 增量模式，按本轮 batch 精确分钟重算冷机状态")
+    return affected
 
 def create_spark_session():
     """创建 Spark Session"""
+    spark_master = os.getenv("SPARK_MASTER", "local[*]")
+    driver_host = os.getenv("SPARK_DRIVER_HOST", "192.168.0.94")
+    hdfs_replication = os.getenv("HDFS_REPLICATION", "1")
     spark = (
         SparkSession.builder
         .appName("Generate_Chiller_Status")
-        .master("local[*]")
+        .master(spark_master)
+        .config("spark.driver.host", driver_host)
+        .config("spark.driver.bindAddress", "0.0.0.0")
+        .config("spark.hadoop.dfs.replication", hdfs_replication)
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
         .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
         .config("spark.jars.packages", "io.delta:delta-spark_2.12:3.2.0")
@@ -38,15 +126,31 @@ def main():
 
     # 1. 读取Silver层点位事实表
     print("\n📥 步骤 1: 读取 Silver 层点位事实表...")
-    fact_path = "hdfs://node1:9000/lake/silver/silver_point_fact"
+    fact_path = f"{HDFS_ROOT}/silver/silver_point_fact"
     df_fact = spark.read.format("delta").load(fact_path)
+    incremental = is_incremental_mode()
+    affected_minutes = load_affected_chiller_minutes(spark, incremental)
 
-    fact_count = df_fact.count()
-    print(f"   ✅ 读取成功: {fact_count:,} 条记录")
+    if incremental:
+        print("   ✅ 读取成功: 增量模式跳过全表计数")
+    else:
+        fact_count = df_fact.count()
+        print(f"   ✅ 读取成功: {fact_count:,} 条记录")
 
     # 2. 筛选冷机系统数据
     print("\n🔍 步骤 2: 筛选冷机系统数据...")
     df_chiller = df_fact.filter(col("system_type") == "chiller")
+
+    # 3. 生成时间窗口（按1分钟聚合）
+    print("\n🕐 步骤 3: 生成时间窗口（按1分钟聚合）...")
+
+    # 添加stat_time字段（精确到分钟）
+    df_chiller = df_chiller.withColumn(
+        "stat_time",
+        date_format(col("event_time"), "yyyy-MM-dd HH:mm:00")
+    )
+    if affected_minutes is not None:
+        df_chiller = df_chiller.join(affected_minutes, ["station_id", "stat_time"], "inner")
 
     chiller_count = df_chiller.count()
     print(f"   ✅ 筛选成功: {chiller_count:,} 条冷机记录")
@@ -61,15 +165,6 @@ def main():
     # 查看冷机设备分布
     print("\n📊 冷机设备分布:")
     df_chiller.groupBy("equipment_id").count().orderBy("equipment_id").show()
-
-    # 3. 生成时间窗口（按1分钟聚合）
-    print("\n🕐 步骤 3: 生成时间窗口（按1分钟聚合）...")
-
-    # 添加stat_time字段（精确到分钟）
-    df_chiller = df_chiller.withColumn(
-        "stat_time",
-        date_format(col("event_time"), "yyyy-MM-dd HH:mm:00")
-    )
 
     # 4. 透视数据：将不同主题的点位转换为列
     print("\n🔄 步骤 4: 透视数据，生成宽表...")
@@ -182,15 +277,10 @@ def main():
     df_status.groupBy("record_count").count().orderBy("record_count").show()
 
     # 8. 写入Silver层
-    output_path = "hdfs://node1:9000/lake/silver/silver_chiller_status"
+    output_path = f"{HDFS_ROOT}/silver/silver_chiller_status"
     print(f"\n💾 步骤 7: 写入 Silver 层: {output_path}")
 
-    df_status.write \
-        .format("delta") \
-        .mode("overwrite") \
-        .option("overwriteSchema", "true") \
-        .partitionBy("dt") \
-        .save(output_path)
+    write_chiller_status(spark, df_status, output_path, incremental)
 
     print("   ✅ 数据已写入 Silver 层")
 

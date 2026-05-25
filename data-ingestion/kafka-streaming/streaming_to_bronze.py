@@ -24,6 +24,7 @@ DEFAULT_CHECKPOINT_PATH = "hdfs://node1:9000/checkpoints/stream/kafka_to_bronze_
 
 def create_spark_session(master: str):
     """Create Spark Session."""
+    hdfs_replication = os.getenv("HDFS_REPLICATION", "1")
     spark = (
         SparkSession.builder
         .appName("Kafka_Streaming_to_Bronze")
@@ -31,6 +32,7 @@ def create_spark_session(master: str):
         .config("spark.executor.memory", "2g")
         .config("spark.executor.cores", "2")
         .config("spark.driver.memory", "4g")
+        .config("spark.hadoop.dfs.replication", hdfs_replication)
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
         .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
         .config("spark.jars.packages",
@@ -78,14 +80,14 @@ def parse_args():
     )
     parser.add_argument(
         "--starting-offsets",
-        default=os.getenv("KAFKA_STARTING_OFFSETS", "earliest"),
+        default=os.getenv("KAFKA_STARTING_OFFSETS", "latest"),
         choices=["earliest", "latest"],
         help="Kafka starting offsets",
     )
     parser.add_argument(
         "--max-offsets-per-trigger",
         type=int,
-        default=int(os.getenv("KAFKA_MAX_OFFSETS_PER_TRIGGER", "5000")),
+        default=int(os.getenv("KAFKA_MAX_OFFSETS_PER_TRIGGER", "15000")),
         help="Maximum Kafka records consumed per micro-batch",
     )
     return parser.parse_args()
@@ -101,6 +103,7 @@ def main():
     print(f"Spark master: {args.master}")
     print(f"Kafka bootstrap: {args.kafka_bootstrap}")
     print(f"Subscribe pattern: {args.subscribe_pattern}")
+    print(f"Starting offsets: {args.starting_offsets}")
     print(f"Output path: {args.output_path}")
     print(f"Checkpoint path: {args.checkpoint_path}")
 

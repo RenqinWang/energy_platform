@@ -3,6 +3,7 @@
 
 import json
 import math
+import os
 import sys
 
 from pyspark.ml.evaluation import RegressionEvaluator
@@ -50,7 +51,7 @@ from pyspark.sql.types import (
 from pyspark.sql.window import Window
 
 
-HDFS_ROOT = "hdfs://node1:9000/lake"
+HDFS_ROOT = os.getenv("HDFS_LAKE_PATH", "hdfs://node1:9000/lake")
 GOLD_SYSTEM_HOURLY = f"{HDFS_ROOT}/gold/gold_system_supply_hourly"
 SILVER_PRICE_DIM = f"{HDFS_ROOT}/silver/silver_price_dim"
 GOLD_SYSTEM_FORECAST = f"{HDFS_ROOT}/gold/gold_system_forecast_supply"
@@ -59,6 +60,9 @@ GOLD_SYSTEM_REVENUE_FORECAST = f"{HDFS_ROOT}/gold/gold_system_revenue_forecast"
 
 MODEL_VERSION = "random_forest_system_v3"
 FORECAST_HOURS = 24
+GAS_KWH_PER_M3 = 9.7
+GAS_PRICE_PER_M3 = float(os.getenv("GAS_PRICE_PER_M3", "2.8"))
+GAS_PRICE_PER_KWH = GAS_PRICE_PER_M3 / GAS_KWH_PER_M3
 
 FEATURE_COLS = [
     "month_num",
@@ -174,6 +178,7 @@ def read_price_map(spark):
         "electricity": prices.get("electricity", 0.8),
         "cooling": prices.get("cooling", 0.3),
         "heating": prices.get("heating", 0.35),
+        "gas": prices.get("gas", GAS_PRICE_PER_KWH),
     }
 
 
@@ -422,13 +427,13 @@ def build_future_features_for_equipment(hourly, features, station_id, system_typ
         .agg(
             spark_max("stat_ts").alias("last_ts"),
             last("target_supply_kwh").alias("latest_supply_kwh"),
-            avg(when(col("target_supply_kwh") > 0, col("energy_consumption_kwh") / col("target_supply_kwh"))).alias("energy_per_supply"),
+            spark_sum(coalesce(col("energy_consumption_kwh"), lit(0.0))).alias("mix_energy"),
             spark_sum(coalesce(col("cooling_supply_kwh"), lit(0.0))).alias("mix_cooling"),
             spark_sum(coalesce(col("heating_supply_kwh"), lit(0.0))).alias("mix_heating"),
             spark_sum(coalesce(col("electric_supply_kwh"), lit(0.0))).alias("mix_electric"),
             spark_sum("target_supply_kwh").alias("mix_total"),
         )
-        .withColumn("energy_per_supply", coalesce(col("energy_per_supply"), lit(1.0)))
+        .withColumn("energy_per_supply", when(col("mix_total") > 0, col("mix_energy") / col("mix_total")).otherwise(lit(1.0)))
         .withColumn("cooling_share", when(col("mix_total") > 0, col("mix_cooling") / col("mix_total")).otherwise(lit(0.0)))
         .withColumn("heating_share", when(col("mix_total") > 0, col("mix_heating") / col("mix_total")).otherwise(lit(0.0)))
         .withColumn("electric_share", when(col("mix_total") > 0, col("mix_electric") / col("mix_total")).otherwise(lit(0.0)))
@@ -536,7 +541,11 @@ def build_revenue_forecast(forecast, prices):
     return (
         forecast.withColumn("forecast_date", to_date(col("target_hour")))
         .withColumn("forecast_hour", hour(to_timestamp(col("target_hour"), "yyyy-MM-dd HH:mm:ss")))
-        .withColumn("energy_price", lit(prices["electricity"]))
+        .withColumn(
+            "energy_price",
+            when(col("system_type").isin("heating", "cchp"), lit(prices["gas"]))
+            .otherwise(lit(prices["electricity"])),
+        )
         .withColumn("cooling_price", lit(prices["cooling"]))
         .withColumn("heating_price", lit(prices["heating"]))
         .withColumn(

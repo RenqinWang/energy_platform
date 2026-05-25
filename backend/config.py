@@ -22,6 +22,7 @@ HDFS_LAKE_PATH = os.getenv("HDFS_LAKE_PATH", f"{HDFS_LAKE_BASE_PATH}/{DATA_MODE}
 
 # Delta Lake Paths
 SILVER_CHILLER_STATUS_PATH = f"{HDFS_LAKE_PATH}/silver/silver_chiller_status"
+SILVER_PRICE_DIM_PATH = f"{HDFS_LAKE_PATH}/silver/silver_price_dim"
 GOLD_SUPPLY_CURVE_PATH = f"{HDFS_LAKE_PATH}/gold/gold_supply_curve_hourly"
 GOLD_DAILY_REPORT_PATH = f"{HDFS_LAKE_PATH}/gold/gold_report_daily"
 GOLD_WEEKLY_REPORT_PATH = f"{HDFS_LAKE_PATH}/gold/gold_report_weekly"

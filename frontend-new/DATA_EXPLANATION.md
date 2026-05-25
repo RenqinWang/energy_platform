@@ -1,5 +1,7 @@
 # 数据说明文档
 
+> 注意：本文档为前端阶段性数据说明，部分预测算法和数据口径可能已经过期。最终提交和答辩口径以 [FINAL_SYSTEM_DESCRIPTION.md](/home/student/energy-platform/docs/FINAL_SYSTEM_DESCRIPTION.md) 为准。
+
 ## 数据来源与时间范围
 
 本系统使用的是**2018年7月20日至10月31日**的历史运行数据，总时间跨度约**75天**。

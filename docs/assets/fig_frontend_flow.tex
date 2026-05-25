@@ -1,0 +1,33 @@
+\begin{figure}[H]
+  \centering
+  \resizebox{\textwidth}{!}{%
+  \begin{tikzpicture}[
+      font=\small,
+      page/.style={draw, rounded corners=3pt, align=center, minimum width=2.7cm, minimum height=0.8cm, fill=blue!6},
+      api/.style={draw, rounded corners=3pt, align=center, minimum width=3.6cm, minimum height=0.9cm, fill=purple!6},
+      table/.style={draw, rounded corners=3pt, align=center, minimum width=3.6cm, minimum height=0.9cm, fill=green!8},
+      arrow/.style={-Latex, thick}
+    ]
+    \node[page] (dashboard) {监测大屏};
+    \node[page, below=0.35cm of dashboard] (device) {设备级查询};
+    \node[page, below=0.35cm of device] (theme) {主题级查询};
+    \node[page, below=0.35cm of theme] (reports) {综合报表};
+    \node[page, below=0.35cm of reports] (forecast) {供能预测};
+    \node[page, below=0.35cm of forecast] (revenue) {收益预测};
+
+    \node[api, right=1.2cm of device] (fastapi) {FastAPI\\full:8001 / stream:8002};
+    \node[api, above=0.4cm of fastapi] (mode) {模式切换\\ENERGY\_DATA\_MODE};
+    \node[table, right=1.2cm of fastapi] (gold) {Gold Delta 表\\hourly / report / forecast / revenue};
+    \node[table, above=0.4cm of gold] (spark) {PySpark Data Access\\按路径读取 Delta};
+
+    \foreach \p in {dashboard,device,theme,reports,forecast,revenue} {
+      \draw[arrow] (\p.east) -- (fastapi.west);
+    }
+    \draw[arrow] (mode) -- (fastapi);
+    \draw[arrow] (fastapi) -- (gold);
+    \draw[arrow] (spark) -- (gold);
+  \end{tikzpicture}%
+  }
+  \caption{前后端查询与展示链路}
+  \label{fig:frontend}
+\end{figure}

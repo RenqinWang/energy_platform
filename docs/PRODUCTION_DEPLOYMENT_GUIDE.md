@@ -528,12 +528,12 @@ step10_run_tests() {
 
     log_info "运行分布式环境测试..."
     $SPARK_HOME/bin/spark-submit \
-        --master $SPARK_MASTER \
-        --deploy-mode client \
-        --executor-memory 2g \
-        --executor-cores 2 \
         --packages io.delta:delta-spark_2.12:3.2.0 \
-        scripts/test_distributed.py
+        scripts/distributed_effectiveness_benchmark.py \
+        --parallel-master "$SPARK_MASTER" \
+        --scale-factor 20 \
+        --trials 2 \
+        --shuffle-partitions 24
 
     if [ $? -eq 0 ]; then
         log_success "所有测试通过"
@@ -983,10 +983,10 @@ spark.sql.adaptive.coalescePartitions.enabled=true
 **文档位置**: `/home/student/energy-platform/docs/`
 
 **关键文档**:
-- `PROJECT_COMPLETION_SUMMARY.md` - 项目完成总结
+- `FINAL_SYSTEM_DESCRIPTION.md` - 最终统一说明文档
 - `PROJECT_MEMO.md` - 项目备忘录
-- `STAGE5_WORK_SUMMARY.md` - 后端API文档
-- `STAGE6_WORK_SUMMARY.md` - 前端界面文档
+- `frontend-data-display-guide.md` - 前端数据展示说明
+- `distributed_effectiveness_validation.md` - 分布式有效性验证
 
 **在线资源**:
 - Apache Spark文档: https://spark.apache.org/docs/latest/

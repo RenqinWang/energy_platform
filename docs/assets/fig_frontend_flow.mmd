@@ -1,0 +1,31 @@
+flowchart LR
+  subgraph UI["React 前端页面"]
+    D["监测大屏"]
+    DEV["设备级查询"]
+    TH["主题级查询"]
+    RP["综合报表"]
+    FC["供能预测"]
+    RV["收益预测"]
+  end
+
+  MODE["模式切换<br/>ENERGY_DATA_MODE<br/>full / stream"]
+  API["FastAPI<br/>full:8001 / stream:8002"]
+  DA["PySpark Data Access<br/>按路径读取 Delta"]
+  GOLD["Gold Delta 表<br/>hourly / report / forecast / revenue"]
+
+  D --> API
+  DEV --> API
+  TH --> API
+  RP --> API
+  FC --> API
+  RV --> API
+  MODE --> API
+  API --> DA
+  DA --> GOLD
+
+  classDef page fill:#eef5ff,stroke:#3b82f6,stroke-width:1px,color:#111827;
+  classDef api fill:#faf5ff,stroke:#a855f7,stroke-width:1px,color:#111827;
+  classDef data fill:#ecfdf5,stroke:#22c55e,stroke-width:1px,color:#111827;
+  class D,DEV,TH,RP,FC,RV page;
+  class MODE,API,DA api;
+  class GOLD data;

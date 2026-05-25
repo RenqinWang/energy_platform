@@ -12,8 +12,7 @@ import {
 } from '@ant-design/icons';
 import BaseChart from '../../components/Charts/BaseChart';
 import Loading from '../../components/Common/Loading';
-import { getAdvice } from '../../api/advice';
-import { getSystemEquipment, getSystemSupplyCurve } from '../../api/report';
+import { getSystemEquipment, getSystemSupplyCurve, getOperationAdvice } from '../../api/report';
 import { getSystemForecast, getSystemForecastMetrics } from '../../api/forecast';
 import { formatDateTime } from '../../utils/format';
 import { ADVICE_TYPE_LABELS, RISK_LEVEL_COLORS, RISK_LEVEL_LABELS } from '../../types/advice';
@@ -106,7 +105,7 @@ export default function ForecastPage() {
           getSystemForecast({ system_type: systemType, equipment_id: selectedEquipment, limit: 24 }),
           getSystemSupplyCurve({ system_type: systemType, equipment_id: selectedEquipment, limit: 96 }),
           getSystemForecastMetrics({ system_type: systemType, equipment_id: selectedEquipment, limit: 1 }),
-          systemType === 'chiller' ? getAdvice({ equipment_id: selectedEquipment, limit: 20 }) : Promise.resolve([]),
+          getOperationAdvice({ system_type: systemType, equipment_id: selectedEquipment, limit: 20 }) as Promise<AdviceRecord[]>,
         ]);
 
         if (!cancelled) {

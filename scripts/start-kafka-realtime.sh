@@ -9,6 +9,9 @@ NODE3="${NODE3:-node3}"
 REMOTE_COMPOSE="/home/student/docker-compose.kafka-realtime.yml"
 BOOTSTRAP_SERVERS="${KAFKA_BOOTSTRAP_SERVERS:-192.168.1.87:9092,192.168.1.19:9092}"
 COMPOSE="docker-compose"
+RESET_STREAM_ON_KAFKA_START="${RESET_STREAM_ON_KAFKA_START:-true}"
+START_KAFKA_PRODUCER="${START_KAFKA_PRODUCER:-true}"
+KAFKA_PRODUCER_INTERVAL="${KAFKA_PRODUCER_INTERVAL:-2600}"
 
 log() {
   printf '[%s] %s\n' "$(date '+%F %T')" "$*"
@@ -36,6 +39,11 @@ wait_port() {
 log "Deploying Kafka realtime docker-compose files"
 scp "$PROJECT_HOME/scripts/kafka/docker-compose.node2.yml" "student@${NODE2}:${REMOTE_COMPOSE}" >/dev/null
 scp "$PROJECT_HOME/scripts/kafka/docker-compose.node3.yml" "student@${NODE3}:${REMOTE_COMPOSE}" >/dev/null
+
+if [ "$RESET_STREAM_ON_KAFKA_START" = "true" ]; then
+  log "Resetting stream lake before producer starts from index 0"
+  "$PROJECT_HOME/scripts/reset-stream-empty.sh"
+fi
 
 log "Stopping old Kafka containers on Node2 and Node3"
 ssh "student@${NODE2}" "${COMPOSE} -f ${REMOTE_COMPOSE} down -v --remove-orphans >/dev/null 2>&1 || true; docker rm -f kafka-ui kafka zookeeper friendly_shockley >/dev/null 2>&1 || true"
@@ -65,10 +73,15 @@ for i in {1..60}; do
   fi
 done
 
-log "Starting producer stream on Node2"
-curl -fsS "http://192.168.1.87:8000/producer/start?interval=5&loop=false" >/dev/null
+if [ "$START_KAFKA_PRODUCER" = "true" ]; then
+  log "Starting producer stream on Node2"
+  curl -fsS "http://192.168.1.87:8000/producer/start?interval=${KAFKA_PRODUCER_INTERVAL}&loop=false" >/dev/null
+else
+  log "Producer stream start skipped by START_KAFKA_PRODUCER=false"
+fi
 
 log "Kafka realtime ingestion source is running"
+log "Producer interval: ${KAFKA_PRODUCER_INTERVAL}"
 log "Bootstrap servers: ${BOOTSTRAP_SERVERS}"
 log "Producer API: http://192.168.1.87:8000"
 log "Kafka UI: http://192.168.1.87:8083"

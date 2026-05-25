@@ -1,0 +1,363 @@
+
+======================================================================
+1. Three-node deployment architecture
+======================================================================
+Node   Public IP        Private IP      Roles
+-----  ---------------  --------------  -----------------------------------------------
+Node1  115.120.208.241  192.168.0.94    Entry, HDFS NameNode/DataNode, Spark Worker,
+                                        FastAPI full/stream backend, React frontend
+Node2  1.94.113.240     192.168.1.87    Spark Master, HDFS DataNode, Spark Worker,
+                                        Kafka Broker, producer API
+Node3  123.60.106.233   192.168.1.19    HDFS DataNode, Spark Worker, Kafka Broker
+
+Core endpoints
+--------------
+HDFS NameNode:     hdfs://node1:9000
+Spark Master:      spark://192.168.1.87:7077
+Kafka Brokers:     192.168.1.87:9092, 192.168.1.19:9092
+Frontend:          http://115.120.208.241:3001
+Full backend:      http://115.120.208.241:8001
+Stream backend:    http://115.120.208.241:8002
+
+======================================================================
+1. HDFS DataNode status
+======================================================================
+
+-- Cluster health summary --
+Configured Capacity: 464641761280 (432.73 GB)
+Present Capacity: 363655336572 (338.68 GB)
+DFS Remaining: 356166496256 (331.71 GB)
+DFS Used: 7488840316 (6.97 GB)
+DFS Used%: 2.06%
+	Under replicated blocks: 0
+	Blocks with corrupt replicas: 0
+	Missing blocks: 0
+Live datanodes (3):
+
+-- Live DataNode details --
+
+Name: 192.168.0.94:9866 (node1)
+Hostname: ecs-new
+Decommission Status : Normal
+Configured Capacity: 211248537600 (196.74 GB)
+DFS Used: 2652873340 (2.47 GB)
+DFS Used%: 1.26%
+DFS Remaining%: 74.69%
+Last contact: Mon May 25 15:56:34 CST 2026
+
+Name: 192.168.1.19:9866 (node3)
+Hostname: node3
+Decommission Status : Normal
+Configured Capacity: 126696611840 (118.00 GB)
+DFS Used: 2417922048 (2.25 GB)
+DFS Used%: 1.91%
+DFS Remaining%: 78.30%
+Last contact: Mon May 25 15:56:34 CST 2026
+
+Name: 192.168.1.87:9866 (node2)
+Hostname: node2
+Decommission Status : Normal
+Configured Capacity: 126696611840 (118.00 GB)
+DFS Used: 2418044928 (2.25 GB)
+DFS Used%: 1.91%
+DFS Remaining%: 78.28%
+Last contact: Mon May 25 15:56:35 CST 2026
+
+======================================================================
+Spark standalone cluster status
+======================================================================
+
+-- Spark Master JSON --
+{
+    "url": "spark://192.168.1.87:7077",
+    "workers": [
+        {
+            "id": "worker-20260525103229-192.168.1.19-46611",
+            "host": "192.168.1.19",
+            "port": 46611,
+            "webuiaddress": "http://192.168.1.19:8081",
+            "cores": 1,
+            "coresused": 0,
+            "coresfree": 1,
+            "memory": 2048,
+            "memoryused": 0,
+            "memoryfree": 2048,
+            "resources": {},
+            "resourcesused": {},
+            "resourcesfree": {},
+            "state": "ALIVE",
+            "lastheartbeat": 1779695789893
+        },
+        {
+            "id": "worker-20260525103225-192.168.0.94-44541",
+            "host": "192.168.0.94",
+            "port": 44541,
+            "webuiaddress": "http://192.168.0.94:8081",
+            "cores": 2,
+            "coresused": 0,
+            "coresfree": 2,
+            "memory": 2048,
+            "memoryused": 0,
+            "memoryfree": 2048,
+            "resources": {},
+            "resourcesused": {},
+            "resourcesfree": {},
+            "state": "ALIVE",
+            "lastheartbeat": 1779695786435
+        },
+        {
+            "id": "worker-20260525103225-192.168.1.87-39179",
+            "host": "192.168.1.87",
+            "port": 39179,
+            "webuiaddress": "http://192.168.1.87:8081",
+            "cores": 1,
+            "coresused": 0,
+            "coresfree": 1,
+            "memory": 2048,
+            "memoryused": 0,
+            "memoryfree": 2048,
+            "resources": {},
+            "resourcesused": {},
+            "resourcesfree": {},
+            "state": "ALIVE",
+            "lastheartbeat": 1779695786342
+        }
+    ],
+    "aliveworkers": 3,
+    "cores": 4,
+    "coresused": 0,
+    "memory": 6144,
+    "memoryused": 0,
+    "resources": [
+        {},
+        {},
+        {}
+    ],
+    "resourcesused": [
+        {},
+        {},
+        {}
+    ],
+    "activeapps": [],
+    "completedapps": [],
+    "activedrivers": [],
+    "completeddrivers": [],
+    "status": "ALIVE"
+}
+
+======================================================================
+2. Kafka producer and Kafka-to-Bronze ingestion
+======================================================================
+
+-- Kafka producer API status --
+{
+    "running": true,
+    "sensors_count": 158,
+    "real_sensors": 158,
+    "simulated_sensors": 0,
+    "messages_sent": 11376,
+    "current_index": 72,
+    "max_index": 40383,
+    "progress_percent": 0.18
+}
+
+-- Kafka processes on Node2 and Node3 --
+31447 Kafka
+32872 Jps
+31356 QuorumPeerMain
+17899 Jps
+
+-- Kafka-to-Bronze process on Node1 --
+1851249 streaming_to_bronze.py (running)
+1851313 streaming_to_bronze.py (running)
+
+-- Kafka-to-Bronze log evidence: /home/student/energy-platform/reports/stream_validation_single_smoke/kafka_to_bronze_streaming.log --
+Filtered latest log lines:
+26/05/25 15:55:28 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:55:28 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:55:32 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:55:32 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:55:35 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:55:37 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:55:38 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:55:40 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:55:42 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:55:43 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:55:44 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:55:46 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:55:48 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:55:49 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:55:50 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:55:53 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 27072 milliseconds
+26/05/25 15:55:55 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:55:55 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:55:58 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:55:59 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:01 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:03 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:04 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:06 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:08 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:09 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:12 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:13 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:15 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:17 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:19 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:21 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:23 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 30178 milliseconds
+26/05/25 15:56:26 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:26 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:30 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:32 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:33 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:34 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:36 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+
+Raw tail:
+26/05/25 15:56:01 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:03 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:04 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:06 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:08 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:09 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:12 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:13 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:15 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:17 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:19 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:21 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:23 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 30178 milliseconds
+26/05/25 15:56:26 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:26 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:30 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:32 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:33 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:34 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+26/05/25 15:56:36 WARN InternalKafkaConsumerPool: Pool exceeds its soft max size, cleaning up idle objects...
+
+-- Stream micro-batch log evidence: /home/student/energy-platform/reports/stream_validation_single_smoke/stream_microbatch_loop.log --
+=== Stream micro-batch started at 2026-05-25 15:53:43 ===
+26/05/25 15:53:44 WARN Utils: Your hostname, ecs-new resolves to a loopback address: 127.0.1.1; using 192.168.0.94 instead (on interface eth0)
+26/05/25 15:53:44 WARN Utils: Set SPARK_LOCAL_IP if you need to bind to another address
+26/05/25 15:53:45 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+26/05/25 15:53:46 WARN Utils: Service 'SparkUI' could not bind on port 4040. Attempting port 4041.
+26/05/25 15:53:46 WARN Utils: Service 'SparkUI' could not bind on port 4041. Attempting port 4042.
+26/05/25 15:53:54 WARN SparkStringUtils: Truncated the string representation of a plan since it was too large. This behavior can be adjusted by setting 'spark.sql.debug.maxToStringFields'.
+No new Bronze rows after watermark; downstream Gold refresh skipped.
+
+======================================================================
+3. HDFS Delta Lake layer paths
+======================================================================
+
+-- Lake root --
+WARNING: log4j.properties is not found. HADOOP_CONF_DIR may be incomplete.
+Found 6 items
+drwxr-xr-x   - student supergroup          0 2026-05-22 21:00 hdfs://node1:9000/lake/bronze
+drwxr-xr-x   - student supergroup          0 2026-05-25 15:53 hdfs://node1:9000/lake/control
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:27 hdfs://node1:9000/lake/full
+drwxr-xr-x   - student supergroup          0 2026-05-24 12:20 hdfs://node1:9000/lake/gold
+drwxr-xr-x   - student supergroup          0 2026-05-21 16:03 hdfs://node1:9000/lake/silver
+drwxr-xr-x   - student supergroup          0 2026-05-25 15:53 hdfs://node1:9000/lake/stream
+
+-- hdfs://node1:9000/lake/bronze --
+WARNING: log4j.properties is not found. HADOOP_CONF_DIR may be incomplete.
+Found 3 items
+drwxr-xr-x   - student supergroup          0 2026-05-24 15:46 hdfs://node1:9000/lake/bronze/bronze_price_raw
+drwxr-xr-x   - student supergroup          0 2026-05-22 21:25 hdfs://node1:9000/lake/bronze/bronze_sensor_kafka
+drwxr-xr-x   - student supergroup          0 2026-05-21 16:00 hdfs://node1:9000/lake/bronze/bronze_sensor_raw
+
+-- hdfs://node1:9000/lake/silver --
+WARNING: log4j.properties is not found. HADOOP_CONF_DIR may be incomplete.
+Found 4 items
+drwxr-xr-x   - student supergroup          0 2026-05-21 16:04 hdfs://node1:9000/lake/silver/silver_chiller_status
+drwxr-xr-x   - student supergroup          0 2026-05-21 16:03 hdfs://node1:9000/lake/silver/silver_point_fact
+drwxr-xr-x   - student supergroup          0 2026-05-23 00:36 hdfs://node1:9000/lake/silver/silver_point_meta_dim
+drwxr-xr-x   - student supergroup          0 2026-05-24 15:48 hdfs://node1:9000/lake/silver/silver_price_dim
+
+-- hdfs://node1:9000/lake/gold --
+WARNING: log4j.properties is not found. HADOOP_CONF_DIR may be incomplete.
+Found 15 items
+drwxr-xr-x   - student supergroup          0 2026-05-23 14:47 hdfs://node1:9000/lake/gold/gold_data_quality
+drwxr-xr-x   - student supergroup          0 2026-05-23 12:56 hdfs://node1:9000/lake/gold/gold_forecast_supply
+drwxr-xr-x   - student supergroup          0 2026-05-23 22:08 hdfs://node1:9000/lake/gold/gold_operation_advice
+drwxr-xr-x   - student supergroup          0 2026-05-21 16:05 hdfs://node1:9000/lake/gold/gold_report_daily
+drwxr-xr-x   - student supergroup          0 2026-05-23 14:34 hdfs://node1:9000/lake/gold/gold_report_monthly
+drwxr-xr-x   - student supergroup          0 2026-05-23 14:33 hdfs://node1:9000/lake/gold/gold_report_weekly
+drwxr-xr-x   - student supergroup          0 2026-05-23 14:35 hdfs://node1:9000/lake/gold/gold_revenue_forecast
+drwxr-xr-x   - student supergroup          0 2026-05-21 16:04 hdfs://node1:9000/lake/gold/gold_supply_curve_hourly
+drwxr-xr-x   - student supergroup          0 2026-05-24 12:41 hdfs://node1:9000/lake/gold/gold_system_forecast_metrics
+drwxr-xr-x   - student supergroup          0 2026-05-24 11:40 hdfs://node1:9000/lake/gold/gold_system_forecast_supply
+drwxr-xr-x   - student supergroup          0 2026-05-24 11:38 hdfs://node1:9000/lake/gold/gold_system_report_daily
+drwxr-xr-x   - student supergroup          0 2026-05-24 11:40 hdfs://node1:9000/lake/gold/gold_system_report_monthly
+drwxr-xr-x   - student supergroup          0 2026-05-24 11:40 hdfs://node1:9000/lake/gold/gold_system_report_weekly
+drwxr-xr-x   - student supergroup          0 2026-05-24 11:40 hdfs://node1:9000/lake/gold/gold_system_revenue_forecast
+drwxr-xr-x   - student supergroup          0 2026-05-24 11:38 hdfs://node1:9000/lake/gold/gold_system_supply_hourly
+
+-- hdfs://node1:9000/lake/full --
+WARNING: log4j.properties is not found. HADOOP_CONF_DIR may be incomplete.
+Found 3 items
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:24 hdfs://node1:9000/lake/full/bronze
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:30 hdfs://node1:9000/lake/full/gold
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:27 hdfs://node1:9000/lake/full/silver
+
+-- hdfs://node1:9000/lake/full/silver --
+WARNING: log4j.properties is not found. HADOOP_CONF_DIR may be incomplete.
+Found 4 items
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:26 hdfs://node1:9000/lake/full/silver/silver_chiller_status
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:27 hdfs://node1:9000/lake/full/silver/silver_point_fact
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:27 hdfs://node1:9000/lake/full/silver/silver_point_meta_dim
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:27 hdfs://node1:9000/lake/full/silver/silver_price_dim
+
+-- hdfs://node1:9000/lake/full/gold --
+WARNING: log4j.properties is not found. HADOOP_CONF_DIR may be incomplete.
+Found 15 items
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:28 hdfs://node1:9000/lake/full/gold/gold_data_quality
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:28 hdfs://node1:9000/lake/full/gold/gold_forecast_supply
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:28 hdfs://node1:9000/lake/full/gold/gold_operation_advice
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:28 hdfs://node1:9000/lake/full/gold/gold_report_daily
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:28 hdfs://node1:9000/lake/full/gold/gold_report_monthly
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:28 hdfs://node1:9000/lake/full/gold/gold_report_weekly
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:28 hdfs://node1:9000/lake/full/gold/gold_revenue_forecast
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:29 hdfs://node1:9000/lake/full/gold/gold_supply_curve_hourly
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:29 hdfs://node1:9000/lake/full/gold/gold_system_forecast_metrics
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:29 hdfs://node1:9000/lake/full/gold/gold_system_forecast_supply
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:29 hdfs://node1:9000/lake/full/gold/gold_system_report_daily
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:30 hdfs://node1:9000/lake/full/gold/gold_system_report_monthly
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:30 hdfs://node1:9000/lake/full/gold/gold_system_report_weekly
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:30 hdfs://node1:9000/lake/full/gold/gold_system_revenue_forecast
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:30 hdfs://node1:9000/lake/full/gold/gold_system_supply_hourly
+
+-- hdfs://node1:9000/lake/stream --
+WARNING: log4j.properties is not found. HADOOP_CONF_DIR may be incomplete.
+Found 3 items
+drwxr-xr-x   - student supergroup          0 2026-05-25 15:54 hdfs://node1:9000/lake/stream/bronze
+drwxr-xr-x   - student supergroup          0 2026-05-25 15:53 hdfs://node1:9000/lake/stream/gold
+drwxr-xr-x   - student supergroup          0 2026-05-25 15:54 hdfs://node1:9000/lake/stream/silver
+
+-- hdfs://node1:9000/lake/stream/bronze --
+WARNING: log4j.properties is not found. HADOOP_CONF_DIR may be incomplete.
+Found 1 items
+drwxr-xr-x   - student supergroup          0 2026-05-25 15:54 hdfs://node1:9000/lake/stream/bronze/bronze_streaming
+
+-- hdfs://node1:9000/lake/stream/silver --
+WARNING: log4j.properties is not found. HADOOP_CONF_DIR may be incomplete.
+Found 2 items
+drwxr-xr-x   - student supergroup          0 2026-05-25 15:54 hdfs://node1:9000/lake/stream/silver/silver_point_meta_dim
+drwxr-xr-x   - student supergroup          0 2026-05-25 15:54 hdfs://node1:9000/lake/stream/silver/silver_price_dim
+
+-- hdfs://node1:9000/lake/stream/gold --
+WARNING: log4j.properties is not found. HADOOP_CONF_DIR may be incomplete.
+
+-- hdfs://node1:9000/lake/control --
+WARNING: log4j.properties is not found. HADOOP_CONF_DIR may be incomplete.
+
+-- Delta table markers (_delta_log) --
+[OK]    hdfs://node1:9000/lake/stream/bronze/bronze_streaming
+[MISS]  hdfs://node1:9000/lake/stream/silver/silver_point_fact
+[MISS]  hdfs://node1:9000/lake/stream/gold/gold_system_supply_hourly
+[OK]    hdfs://node1:9000/lake/full/silver/silver_point_fact
+[OK]    hdfs://node1:9000/lake/full/gold/gold_system_supply_hourly
+[OK]    hdfs://node1:9000/lake/full/gold/gold_system_report_daily
+[OK]    hdfs://node1:9000/lake/full/gold/gold_system_forecast_supply
+[OK]    hdfs://node1:9000/lake/full/gold/gold_system_revenue_forecast

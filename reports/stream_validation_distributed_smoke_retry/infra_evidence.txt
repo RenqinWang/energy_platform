@@ -1,0 +1,355 @@
+
+======================================================================
+1. Three-node deployment architecture
+======================================================================
+Node   Public IP        Private IP      Roles
+-----  ---------------  --------------  -----------------------------------------------
+Node1  115.120.208.241  192.168.0.94    Entry, HDFS NameNode/DataNode, Spark Worker,
+                                        FastAPI full/stream backend, React frontend
+Node2  1.94.113.240     192.168.1.87    Spark Master, HDFS DataNode, Spark Worker,
+                                        Kafka Broker, producer API
+Node3  123.60.106.233   192.168.1.19    HDFS DataNode, Spark Worker, Kafka Broker
+
+Core endpoints
+--------------
+HDFS NameNode:     hdfs://node1:9000
+Spark Master:      spark://192.168.1.87:7077
+Kafka Brokers:     192.168.1.87:9092, 192.168.1.19:9092
+Frontend:          http://115.120.208.241:3001
+Full backend:      http://115.120.208.241:8001
+Stream backend:    http://115.120.208.241:8002
+
+======================================================================
+1. HDFS DataNode status
+======================================================================
+
+-- Cluster health summary --
+Configured Capacity: 464641761280 (432.73 GB)
+Present Capacity: 362826327996 (337.91 GB)
+DFS Remaining: 355390152420 (330.98 GB)
+DFS Used: 7436175576 (6.93 GB)
+DFS Used%: 2.05%
+	Under replicated blocks: 1
+	Blocks with corrupt replicas: 0
+	Missing blocks: 0
+Live datanodes (3):
+
+-- Live DataNode details --
+
+Name: 192.168.0.94:9866 (node1)
+Hostname: ecs-new
+Decommission Status : Normal
+Configured Capacity: 211248537600 (196.74 GB)
+DFS Used: 2579007542 (2.40 GB)
+DFS Used%: 1.22%
+DFS Remaining%: 74.43%
+Last contact: Mon May 25 16:57:31 CST 2026
+
+Name: 192.168.1.19:9866 (node3)
+Hostname: node3
+Decommission Status : Normal
+Configured Capacity: 126696611840 (118.00 GB)
+DFS Used: 2425666477 (2.26 GB)
+DFS Used%: 1.91%
+DFS Remaining%: 78.27%
+Last contact: Mon May 25 16:57:31 CST 2026
+
+Name: 192.168.1.87:9866 (node2)
+Hostname: node2
+Decommission Status : Normal
+Configured Capacity: 126696611840 (118.00 GB)
+DFS Used: 2431501557 (2.26 GB)
+DFS Used%: 1.92%
+DFS Remaining%: 78.14%
+Last contact: Mon May 25 16:57:32 CST 2026
+
+======================================================================
+Spark standalone cluster status
+======================================================================
+
+-- Spark Master JSON --
+{
+    "url": "spark://192.168.1.87:7077",
+    "workers": [
+        {
+            "id": "worker-20260525103229-192.168.1.19-46611",
+            "host": "192.168.1.19",
+            "port": 46611,
+            "webuiaddress": "http://192.168.1.19:8081",
+            "cores": 1,
+            "coresused": 0,
+            "coresfree": 1,
+            "memory": 2048,
+            "memoryused": 0,
+            "memoryfree": 2048,
+            "resources": {},
+            "resourcesused": {},
+            "resourcesfree": {},
+            "state": "ALIVE",
+            "lastheartbeat": 1779699449893
+        },
+        {
+            "id": "worker-20260525103225-192.168.0.94-44541",
+            "host": "192.168.0.94",
+            "port": 44541,
+            "webuiaddress": "http://192.168.0.94:8081",
+            "cores": 2,
+            "coresused": 2,
+            "coresfree": 0,
+            "memory": 2048,
+            "memoryused": 2048,
+            "memoryfree": 0,
+            "resources": {},
+            "resourcesused": {},
+            "resourcesfree": {},
+            "state": "ALIVE",
+            "lastheartbeat": 1779699446435
+        },
+        {
+            "id": "worker-20260525103225-192.168.1.87-39179",
+            "host": "192.168.1.87",
+            "port": 39179,
+            "webuiaddress": "http://192.168.1.87:8081",
+            "cores": 1,
+            "coresused": 0,
+            "coresfree": 1,
+            "memory": 2048,
+            "memoryused": 0,
+            "memoryfree": 2048,
+            "resources": {},
+            "resourcesused": {},
+            "resourcesfree": {},
+            "state": "ALIVE",
+            "lastheartbeat": 1779699446342
+        }
+    ],
+    "aliveworkers": 3,
+    "cores": 4,
+    "coresused": 2,
+    "memory": 6144,
+    "memoryused": 2048,
+    "resources": [
+        {},
+        {},
+        {}
+    ],
+    "resourcesused": [
+        {},
+        {},
+        {}
+    ],
+    "activeapps": [
+        {
+            "id": "app-20260525164918-0002",
+            "starttime": 1779698958944,
+            "name": "Kafka_Streaming_to_Bronze",
+            "cores": 2,
+            "user": "student",
+            "memoryperexecutor": 2048,
+            "memoryperslave": 2048,
+            "resourcesperexecutor": [],
+
+======================================================================
+2. Kafka producer and Kafka-to-Bronze ingestion
+======================================================================
+
+-- Kafka producer API status --
+{
+    "running": true,
+    "sensors_count": 158,
+    "real_sensors": 158,
+    "simulated_sensors": 0,
+    "messages_sent": 35550,
+    "current_index": 225,
+    "max_index": 40383,
+    "progress_percent": 0.56
+}
+
+-- Kafka processes on Node2 and Node3 --
+56292 QuorumPeerMain
+62869 Jps
+56381 Kafka
+26732 Jps
+22396 Kafka
+
+-- Kafka-to-Bronze process on Node1 --
+1948648 streaming_to_bronze.py (running)
+1948702 streaming_to_bronze.py (running)
+
+-- Kafka-to-Bronze log evidence: /home/student/energy-platform/reports/stream_validation_distributed_smoke_retry/kafka_to_bronze_streaming.log --
+Filtered latest log lines:
+26/05/25 16:49:16 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+26/05/25 16:49:18 WARN Utils: Service 'SparkUI' could not bind on port 4040. Attempting port 4041.
+Kafka streaming ingestion started
+Spark master: spark://192.168.1.87:7077
+Kafka bootstrap: 192.168.1.87:9092,192.168.1.19:9092
+Starting offsets: latest
+Output path: hdfs://node1:9000/lake/stream/bronze/bronze_streaming
+Checkpoint path: hdfs://node1:9000/checkpoints/stream/kafka_to_bronze_streaming
+26/05/25 16:49:24 WARN ResolveWriteToStream: spark.sql.adaptive.enabled is not supported in streaming DataFrames/Datasets and will be disabled.
+Streaming query is running
+Query ID: 8b7303de-e06b-4adb-aac3-0cf747b6797a
+26/05/25 16:49:24 WARN AdminClientConfig: These configurations '[key.deserializer, value.deserializer, enable.auto.commit, max.poll.records, auto.offset.reset]' were supplied but are not used yet.
+26/05/25 16:50:00 WARN SparkStringUtils: Truncated the string representation of a plan since it was too large. This behavior can be adjusted by setting 'spark.sql.debug.maxToStringFields'.
+26/05/25 16:50:36 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 36718 milliseconds
+26/05/25 16:51:20 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 43772 milliseconds
+26/05/25 16:52:02 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 42191 milliseconds
+26/05/25 16:52:44 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 42190 milliseconds
+26/05/25 16:53:27 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 42505 milliseconds
+26/05/25 16:54:09 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 42016 milliseconds
+26/05/25 16:54:52 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 42700 milliseconds
+26/05/25 16:55:35 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 43623 milliseconds
+26/05/25 16:56:17 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 42070 milliseconds
+26/05/25 16:57:05 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 47738 milliseconds
+
+Raw tail:
+Output path: hdfs://node1:9000/lake/stream/bronze/bronze_streaming
+Checkpoint path: hdfs://node1:9000/checkpoints/stream/kafka_to_bronze_streaming
+26/05/25 16:49:24 WARN ResolveWriteToStream: spark.sql.adaptive.enabled is not supported in streaming DataFrames/Datasets and will be disabled.
+Streaming query is running
+============================================================
+Query ID: 8b7303de-e06b-4adb-aac3-0cf747b6797a
+Status: {'message': 'Initializing sources', 'isDataAvailable': False, 'isTriggerActive': False}
+============================================================
+26/05/25 16:49:24 WARN AdminClientConfig: These configurations '[key.deserializer, value.deserializer, enable.auto.commit, max.poll.records, auto.offset.reset]' were supplied but are not used yet.
+26/05/25 16:50:00 WARN SparkStringUtils: Truncated the string representation of a plan since it was too large. This behavior can be adjusted by setting 'spark.sql.debug.maxToStringFields'.
+26/05/25 16:50:36 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 36718 milliseconds
+26/05/25 16:51:20 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 43772 milliseconds
+26/05/25 16:52:02 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 42191 milliseconds
+26/05/25 16:52:44 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 42190 milliseconds
+26/05/25 16:53:27 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 42505 milliseconds
+26/05/25 16:54:09 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 42016 milliseconds
+26/05/25 16:54:52 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 42700 milliseconds
+26/05/25 16:55:35 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 43623 milliseconds
+26/05/25 16:56:17 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 42070 milliseconds
+26/05/25 16:57:05 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 47738 milliseconds
+
+-- Stream micro-batch log evidence: /home/student/energy-platform/reports/stream_validation_distributed_smoke_retry/stream_microbatch_loop.log --
+26/05/25 16:55:39 WARN TaskSetManager: Lost task 1.1 in stage 2.0 (TID 4) (192.168.1.87 executor 0): org.apache.spark.SparkException: Encountered error while reading file hdfs://node1:9000/lake/stream/bronze/bronze_streaming/_delta_log/00000000000000000004.json. Details:
+Caused by: org.apache.hadoop.hdfs.BlockMissingException: Could not obtain block: BP-486845944-192.168.0.94-1779273129807:blk_1074205924_465107 file=/lake/stream/bronze/bronze_streaming/_delta_log/00000000000000000004.json No live nodes contain current block Block locations: DatanodeInfoWithStorage[192.168.0.94:9866,DS-939fba08-d2f8-4dab-9e0e-b92ce0b28a23,DISK] Dead nodes:  DatanodeInfoWithStorage[192.168.0.94:9866,DS-939fba08-d2f8-4dab-9e0e-b92ce0b28a23,DISK]
+26/05/25 16:55:47 WARN TaskSetManager: Lost task 0.1 in stage 2.0 (TID 5) (192.168.1.19 executor 1): org.apache.spark.SparkException: Encountered error while reading file hdfs://node1:9000/lake/stream/bronze/bronze_streaming/_delta_log/00000000000000000007.json. Details:
+Caused by: org.apache.hadoop.hdfs.BlockMissingException: Could not obtain block: BP-486845944-192.168.0.94-1779273129807:blk_1074206407_465590 file=/lake/stream/bronze/bronze_streaming/_delta_log/00000000000000000007.json No live nodes contain current block Block locations: DatanodeInfoWithStorage[192.168.0.94:9866,DS-939fba08-d2f8-4dab-9e0e-b92ce0b28a23,DISK] Dead nodes:  DatanodeInfoWithStorage[192.168.0.94:9866,DS-939fba08-d2f8-4dab-9e0e-b92ce0b28a23,DISK]
+26/05/25 16:55:55 WARN TaskSetManager: Lost task 1.2 in stage 2.0 (TID 6) (192.168.1.87 executor 0): org.apache.spark.SparkException: Encountered error while reading file hdfs://node1:9000/lake/stream/bronze/bronze_streaming/_delta_log/00000000000000000004.json. Details:
+Caused by: org.apache.hadoop.hdfs.BlockMissingException: Could not obtain block: BP-486845944-192.168.0.94-1779273129807:blk_1074205924_465107 file=/lake/stream/bronze/bronze_streaming/_delta_log/00000000000000000004.json No live nodes contain current block Block locations: DatanodeInfoWithStorage[192.168.0.94:9866,DS-939fba08-d2f8-4dab-9e0e-b92ce0b28a23,DISK] Dead nodes:  DatanodeInfoWithStorage[192.168.0.94:9866,DS-939fba08-d2f8-4dab-9e0e-b92ce0b28a23,DISK]
+26/05/25 16:56:05 WARN TaskSetManager: Lost task 0.2 in stage 2.0 (TID 7) (192.168.1.19 executor 1): org.apache.spark.SparkException: Encountered error while reading file hdfs://node1:9000/lake/stream/bronze/bronze_streaming/_delta_log/00000000000000000007.json. Details:
+Caused by: org.apache.hadoop.hdfs.BlockMissingException: Could not obtain block: BP-486845944-192.168.0.94-1779273129807:blk_1074206407_465590 file=/lake/stream/bronze/bronze_streaming/_delta_log/00000000000000000007.json No live nodes contain current block Block locations: DatanodeInfoWithStorage[192.168.0.94:9866,DS-939fba08-d2f8-4dab-9e0e-b92ce0b28a23,DISK] Dead nodes:  DatanodeInfoWithStorage[192.168.0.94:9866,DS-939fba08-d2f8-4dab-9e0e-b92ce0b28a23,DISK]
+26/05/25 16:56:16 WARN TaskSetManager: Lost task 1.3 in stage 2.0 (TID 8) (192.168.1.87 executor 0): org.apache.spark.SparkException: Encountered error while reading file hdfs://node1:9000/lake/stream/bronze/bronze_streaming/_delta_log/00000000000000000004.json. Details:
+Caused by: org.apache.hadoop.hdfs.BlockMissingException: Could not obtain block: BP-486845944-192.168.0.94-1779273129807:blk_1074205924_465107 file=/lake/stream/bronze/bronze_streaming/_delta_log/00000000000000000004.json No live nodes contain current block Block locations: DatanodeInfoWithStorage[192.168.0.94:9866,DS-939fba08-d2f8-4dab-9e0e-b92ce0b28a23,DISK] Dead nodes:  DatanodeInfoWithStorage[192.168.0.94:9866,DS-939fba08-d2f8-4dab-9e0e-b92ce0b28a23,DISK]
+26/05/25 16:56:16 ERROR TaskSetManager: Task 1 in stage 2.0 failed 4 times; aborting job
+No new Bronze rows after watermark; downstream Gold refresh skipped.
+
+======================================================================
+3. HDFS Delta Lake layer paths
+======================================================================
+
+-- Lake root --
+WARNING: log4j.properties is not found. HADOOP_CONF_DIR may be incomplete.
+Found 6 items
+drwxr-xr-x   - student supergroup          0 2026-05-22 21:00 hdfs://node1:9000/lake/bronze
+drwxr-xr-x   - student supergroup          0 2026-05-25 16:37 hdfs://node1:9000/lake/control
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:27 hdfs://node1:9000/lake/full
+drwxr-xr-x   - student supergroup          0 2026-05-24 12:20 hdfs://node1:9000/lake/gold
+drwxr-xr-x   - student supergroup          0 2026-05-21 16:03 hdfs://node1:9000/lake/silver
+drwxr-xr-x   - student supergroup          0 2026-05-25 16:48 hdfs://node1:9000/lake/stream
+
+-- hdfs://node1:9000/lake/bronze --
+WARNING: log4j.properties is not found. HADOOP_CONF_DIR may be incomplete.
+Found 3 items
+drwxr-xr-x   - student supergroup          0 2026-05-24 15:46 hdfs://node1:9000/lake/bronze/bronze_price_raw
+drwxr-xr-x   - student supergroup          0 2026-05-22 21:25 hdfs://node1:9000/lake/bronze/bronze_sensor_kafka
+drwxr-xr-x   - student supergroup          0 2026-05-21 16:00 hdfs://node1:9000/lake/bronze/bronze_sensor_raw
+
+-- hdfs://node1:9000/lake/silver --
+WARNING: log4j.properties is not found. HADOOP_CONF_DIR may be incomplete.
+Found 4 items
+drwxr-xr-x   - student supergroup          0 2026-05-21 16:04 hdfs://node1:9000/lake/silver/silver_chiller_status
+drwxr-xr-x   - student supergroup          0 2026-05-21 16:03 hdfs://node1:9000/lake/silver/silver_point_fact
+drwxr-xr-x   - student supergroup          0 2026-05-23 00:36 hdfs://node1:9000/lake/silver/silver_point_meta_dim
+drwxr-xr-x   - student supergroup          0 2026-05-24 15:48 hdfs://node1:9000/lake/silver/silver_price_dim
+
+-- hdfs://node1:9000/lake/gold --
+WARNING: log4j.properties is not found. HADOOP_CONF_DIR may be incomplete.
+Found 15 items
+drwxr-xr-x   - student supergroup          0 2026-05-23 14:47 hdfs://node1:9000/lake/gold/gold_data_quality
+drwxr-xr-x   - student supergroup          0 2026-05-23 12:56 hdfs://node1:9000/lake/gold/gold_forecast_supply
+drwxr-xr-x   - student supergroup          0 2026-05-23 22:08 hdfs://node1:9000/lake/gold/gold_operation_advice
+drwxr-xr-x   - student supergroup          0 2026-05-21 16:05 hdfs://node1:9000/lake/gold/gold_report_daily
+drwxr-xr-x   - student supergroup          0 2026-05-23 14:34 hdfs://node1:9000/lake/gold/gold_report_monthly
+drwxr-xr-x   - student supergroup          0 2026-05-23 14:33 hdfs://node1:9000/lake/gold/gold_report_weekly
+drwxr-xr-x   - student supergroup          0 2026-05-23 14:35 hdfs://node1:9000/lake/gold/gold_revenue_forecast
+drwxr-xr-x   - student supergroup          0 2026-05-21 16:04 hdfs://node1:9000/lake/gold/gold_supply_curve_hourly
+drwxr-xr-x   - student supergroup          0 2026-05-24 12:41 hdfs://node1:9000/lake/gold/gold_system_forecast_metrics
+drwxr-xr-x   - student supergroup          0 2026-05-24 11:40 hdfs://node1:9000/lake/gold/gold_system_forecast_supply
+drwxr-xr-x   - student supergroup          0 2026-05-24 11:38 hdfs://node1:9000/lake/gold/gold_system_report_daily
+drwxr-xr-x   - student supergroup          0 2026-05-24 11:40 hdfs://node1:9000/lake/gold/gold_system_report_monthly
+drwxr-xr-x   - student supergroup          0 2026-05-24 11:40 hdfs://node1:9000/lake/gold/gold_system_report_weekly
+drwxr-xr-x   - student supergroup          0 2026-05-24 11:40 hdfs://node1:9000/lake/gold/gold_system_revenue_forecast
+drwxr-xr-x   - student supergroup          0 2026-05-24 11:38 hdfs://node1:9000/lake/gold/gold_system_supply_hourly
+
+-- hdfs://node1:9000/lake/full --
+WARNING: log4j.properties is not found. HADOOP_CONF_DIR may be incomplete.
+Found 3 items
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:24 hdfs://node1:9000/lake/full/bronze
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:30 hdfs://node1:9000/lake/full/gold
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:27 hdfs://node1:9000/lake/full/silver
+
+-- hdfs://node1:9000/lake/full/silver --
+WARNING: log4j.properties is not found. HADOOP_CONF_DIR may be incomplete.
+Found 4 items
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:26 hdfs://node1:9000/lake/full/silver/silver_chiller_status
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:27 hdfs://node1:9000/lake/full/silver/silver_point_fact
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:27 hdfs://node1:9000/lake/full/silver/silver_point_meta_dim
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:27 hdfs://node1:9000/lake/full/silver/silver_price_dim
+
+-- hdfs://node1:9000/lake/full/gold --
+WARNING: log4j.properties is not found. HADOOP_CONF_DIR may be incomplete.
+Found 15 items
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:28 hdfs://node1:9000/lake/full/gold/gold_data_quality
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:28 hdfs://node1:9000/lake/full/gold/gold_forecast_supply
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:28 hdfs://node1:9000/lake/full/gold/gold_operation_advice
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:28 hdfs://node1:9000/lake/full/gold/gold_report_daily
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:28 hdfs://node1:9000/lake/full/gold/gold_report_monthly
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:28 hdfs://node1:9000/lake/full/gold/gold_report_weekly
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:28 hdfs://node1:9000/lake/full/gold/gold_revenue_forecast
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:29 hdfs://node1:9000/lake/full/gold/gold_supply_curve_hourly
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:29 hdfs://node1:9000/lake/full/gold/gold_system_forecast_metrics
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:29 hdfs://node1:9000/lake/full/gold/gold_system_forecast_supply
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:29 hdfs://node1:9000/lake/full/gold/gold_system_report_daily
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:30 hdfs://node1:9000/lake/full/gold/gold_system_report_monthly
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:30 hdfs://node1:9000/lake/full/gold/gold_system_report_weekly
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:30 hdfs://node1:9000/lake/full/gold/gold_system_revenue_forecast
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:30 hdfs://node1:9000/lake/full/gold/gold_system_supply_hourly
+
+-- hdfs://node1:9000/lake/stream --
+WARNING: log4j.properties is not found. HADOOP_CONF_DIR may be incomplete.
+Found 3 items
+drwxr-xr-x   - student supergroup          0 2026-05-25 16:49 hdfs://node1:9000/lake/stream/bronze
+drwxr-xr-x   - student supergroup          0 2026-05-25 16:48 hdfs://node1:9000/lake/stream/gold
+drwxr-xr-x   - student supergroup          0 2026-05-25 16:48 hdfs://node1:9000/lake/stream/silver
+
+-- hdfs://node1:9000/lake/stream/bronze --
+WARNING: log4j.properties is not found. HADOOP_CONF_DIR may be incomplete.
+Found 1 items
+drwxr-xr-x   - student supergroup          0 2026-05-25 16:51 hdfs://node1:9000/lake/stream/bronze/bronze_streaming
+
+-- hdfs://node1:9000/lake/stream/silver --
+WARNING: log4j.properties is not found. HADOOP_CONF_DIR may be incomplete.
+Found 2 items
+drwxr-xr-x   - student supergroup          0 2026-05-25 16:48 hdfs://node1:9000/lake/stream/silver/silver_point_meta_dim
+drwxr-xr-x   - student supergroup          0 2026-05-25 16:48 hdfs://node1:9000/lake/stream/silver/silver_price_dim
+
+-- hdfs://node1:9000/lake/stream/gold --
+WARNING: log4j.properties is not found. HADOOP_CONF_DIR may be incomplete.
+
+-- hdfs://node1:9000/lake/control --
+WARNING: log4j.properties is not found. HADOOP_CONF_DIR may be incomplete.
+
+-- Delta table markers (_delta_log) --
+[OK]    hdfs://node1:9000/lake/stream/bronze/bronze_streaming
+[MISS]  hdfs://node1:9000/lake/stream/silver/silver_point_fact
+[MISS]  hdfs://node1:9000/lake/stream/gold/gold_system_supply_hourly
+[OK]    hdfs://node1:9000/lake/full/silver/silver_point_fact
+[OK]    hdfs://node1:9000/lake/full/gold/gold_system_supply_hourly
+[OK]    hdfs://node1:9000/lake/full/gold/gold_system_report_daily
+[OK]    hdfs://node1:9000/lake/full/gold/gold_system_forecast_supply
+[OK]    hdfs://node1:9000/lake/full/gold/gold_system_revenue_forecast

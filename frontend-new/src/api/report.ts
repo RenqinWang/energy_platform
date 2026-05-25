@@ -184,6 +184,71 @@ export interface SystemRevenueForecastRecord {
   created_at?: string;
 }
 
+export interface DashboardSummary {
+  station_id: string;
+  stat_date?: string;
+  start_date?: string;
+  end_date?: string;
+  generated_at: string;
+  latest_data_time?: string;
+  kpis: {
+    today_total_supply: number;
+    current_total_supply: number;
+    current_total_energy: number;
+    forecast_profit_24h: number;
+    forecast_profit_scope?: string;
+    forecast_profit_all_systems?: number;
+    running_equipment: number;
+    warning_equipment: number;
+    avg_efficiency?: number | null;
+  };
+  systems: Array<{
+    system_type: SystemType;
+    equipment_count: number;
+    running_count: number;
+    warning_count: number;
+    total_supply: number;
+    total_cooling: number;
+    total_heating: number;
+    total_electric: number;
+    total_energy: number;
+  }>;
+  equipment: Array<{
+    station_id?: string;
+    system_type: SystemType;
+    equipment_id: string;
+    status: 'running' | 'stopped' | 'warning' | 'nodata';
+    supply: number;
+    cooling: number;
+    heating: number;
+    electric: number;
+    energy: number;
+    efficiency?: number | null;
+    stat_hour?: string;
+  }>;
+  trend: Array<{ time: string; history: number }>;
+  forecast: Array<{ time: string; forecast: number; lower?: number; upper?: number }>;
+  advice: Array<{
+    system_type?: SystemType;
+    equipment_id?: string;
+    advice_time?: string;
+    advice_type?: string;
+    risk_level?: string;
+    advice_text: string;
+  }>;
+}
+
+export interface PriceHistoryRecord {
+  station_code: string;
+  price_type: 'cooling' | 'heating' | 'electricity' | string;
+  price: number;
+  effective_date: string;
+  data_updated_at?: string;
+  source_type?: string;
+  price_year_month?: string;
+  created_at?: string;
+}
+
 export const getWeeklyReport = async (params?: {
   station_id?: string;
   equipment_id?: string;
@@ -283,4 +348,39 @@ export const getSystemMonthlyReport = async (params?: {
   limit?: number;
 }): Promise<SystemMonthlyReportRecord[]> => {
   return client.get<unknown, SystemMonthlyReportRecord[]>('/system-monthly-report', { params });
+};
+
+export const getDashboardSummary = async (params?: {
+  station_id?: string;
+  stat_date?: string;
+  start_date?: string;
+  end_date?: string;
+}): Promise<DashboardSummary> => {
+  return client.get<unknown, DashboardSummary>('/dashboard/summary', { params });
+};
+
+export const getDashboardDates = async (params?: {
+  station_id?: string;
+}): Promise<string[]> => {
+  return client.get<unknown, string[]>('/dashboard/dates', { params });
+};
+
+export const getPriceHistory = async (params?: {
+  station_id?: string;
+  price_type?: string;
+  start_date?: string;
+  end_date?: string;
+  limit?: number;
+}): Promise<PriceHistoryRecord[]> => {
+  return client.get<unknown, PriceHistoryRecord[]>('/price-history', { params });
+};
+
+export const getOperationAdvice = async (params?: {
+  system_type?: SystemType;
+  station_id?: string;
+  equipment_id?: string;
+  risk_level?: string;
+  limit?: number;
+}): Promise<DashboardSummary['advice']> => {
+  return client.get<unknown, DashboardSummary['advice']>('/operation-advice', { params });
 };

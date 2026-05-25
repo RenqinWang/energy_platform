@@ -1,122 +1,96 @@
 # 智慧能源网监测平台
 
-基于分布式数据分析的能源站监测与分析平台
+基于 Kafka、Spark、Delta Lake、HDFS、FastAPI 和 React 的分布式能源数据分析平台。
 
-## 项目概述
+最终提交和答辩口径请先阅读：
 
-本项目是一个完整的分布式能源数据分析平台，实现从数据采集到可视化展示的完整链路。
+- [最终统一说明文档](docs/FINAL_SYSTEM_DESCRIPTION.md)
+- [作业要求对照与待完善清单](docs/ASSIGNMENT2_GAP_ANALYSIS.md)
+- [数据完整性分析](docs/DATA_COMPLETENESS_ANALYSIS.md)
+- [分布式有效性验证](docs/distributed_effectiveness_validation.md)
+- [前端数据展示说明](docs/frontend-data-display-guide.md)
 
-**技术栈**：Kafka + Spark + Delta Lake + HDFS + FastAPI + React + ECharts
+## 当前范围
 
-**业务范围**：单站点（北站）、跨系统协同监测，重点实现冷机系统
+平台覆盖冷机、热机、冷热电三联供三类系统，支持：
 
-## 系统架构
+- Kafka 模拟流式采集和 Bronze 入湖
+- full/stream 两套 Delta Lake 结果命名空间
+- Silver 点位标准化、价格维表和冷机状态宽表
+- Gold 系统小时表、日/周/月综合报表、预测、收益预测和运行建议
+- FastAPI 查询接口
+- React 前端页面：系统级展示、设备级查询、主题级查询、综合报表、供能预测、收益预测
 
-### 三节点部署架构
+## 三节点部署
 
-- **Node-1 (192.168.0.94) - 入口+存储+计算**
-  - HDFS NameNode
-  - HDFS DataNode
-  - Spark Worker
-  - Backend API
-  - React 前端
+| 节点 | 内网 IP | 角色 | 组件 |
+|---|---|---|---|
+| Node-1 | `192.168.0.94` | 入口、存储、计算 | HDFS NameNode/DataNode、Spark Worker、FastAPI、React 前端 |
+| Node-2 | `192.168.1.87` | 调度、存储、计算、消息 | Spark Master、HDFS DataNode、Spark Worker、Kafka Broker |
+| Node-3 | `192.168.1.19` | 存储、计算、消息 | HDFS DataNode、Spark Worker、Kafka Broker |
 
-- **Node-2 (192.168.1.87) - 调度+存储+计算+消息**
-  - Spark Master
-  - HDFS DataNode
-  - Spark Worker
-  - Kafka Broker
-  - 任务调度
+核心地址：
 
-- **Node-3 (192.168.1.19) - 存储+计算+消息**
-  - HDFS DataNode
-  - Spark Worker
-  - Kafka Broker
+- HDFS：`hdfs://node1:9000`
+- Spark：`spark://node2:7077`
+- Kafka：`192.168.1.87:9092,192.168.1.19:9092`
+- 前端：`http://115.120.208.241:3001`
+- full 后端：`http://115.120.208.241:8001`
+- stream 后端：`http://115.120.208.241:8002`
 
-### 数据湖分层
+## 当前目录结构
 
-- **Bronze 层**：原始数据（`bronze_sensor_raw`, `bronze_price_raw`）
-- **Silver 层**：标准化数据（`silver_point_fact`, `silver_chiller_status`, `silver_price_dim`）
-- **Gold 层**：应用层结果（报表、预测、建议）
-
-## 目录结构
-
-```
+```text
 energy-platform/
-├── data-ingestion/          # 数据采集模块
-│   ├── kafka-streaming/     # Kafka 流式接入
-│   ├── price-sync/          # 价格数据同步
-│   └── dict-loader/         # 点位字典加载
-├── data-processing/         # 数据处理模块
-│   ├── bronze-layer/        # Bronze 层入湖
-│   ├── silver-layer/        # Silver 层标准化
-│   └── gold-layer/          # Gold 层报表与预测
-├── backend-api/             # 后端 API 服务
-│   └── routers/             # API 路由
-├── frontend/                # 前端展示
-│   └── src/pages/           # React 页面
-├── config/                  # 配置文件
-├── scripts/                 # 运维脚本
-│   ├── benchmark/           # 性能测试
-│   ├── maintenance/         # 维护脚本
-│   └── deployment/          # 部署脚本
-└── docs/                    # 文档
-    └── vibe-context/        # Vibe coding 上下文
+├── backend/                    # FastAPI 后端
+├── frontend-new/               # React + Vite 前端
+├── data-ingestion/             # Kafka、价格、点位字典接入
+├── data-processing/
+│   ├── silver-layer/           # Silver 层治理脚本
+│   ├── gold-layer/             # Gold 报表、预测、建议脚本
+│   ├── full/                   # 全量模式说明
+│   └── stream/                 # 5 分钟微批增量脚本
+├── scripts/                    # 当前运维、启动、验证脚本
+│   └── archive/                # 早期旧脚本归档
+└── docs/
+    ├── FINAL_SYSTEM_DESCRIPTION.md
+    ├── ASSIGNMENT2_GAP_ANALYSIS.md
+    └── archive/                # 阶段性旧文档归档
 ```
 
-## 快速开始
-
-### 1. 启动集群
+## 常用命令
 
 ```bash
-# 启动 HDFS（在 Node1）
-$HADOOP_HOME/sbin/start-dfs.sh
+cd /home/student/energy-platform
 
-# 启动 Spark（在 Node2）
-ssh student@node2 "$SPARK_HOME/sbin/start-all.sh"
+# full 后端
+./scripts/start-backend-mode.sh full
 
-# 启动 Kafka（在 Node1）
-docker-compose start
+# stream 后端
+./scripts/start-backend-mode.sh stream
+
+# Kafka -> stream Bronze
+./scripts/start-kafka-to-bronze.sh
+
+# 5 分钟微批
+./scripts/run-stream-microbatch.sh loop
+
+# 切到只处理 Kafka 最新数据
+./scripts/reset-stream-to-latest.sh
 ```
 
-### 2. 验证集群状态
+前端开发服务：
 
 ```bash
-# 检查 HDFS
-hdfs dfsadmin -report
-
-# 检查 Spark
-# 访问 http://node2:8080
-
-# 检查 Kafka
-# 访问 http://node1:8083
+cd /home/student/energy-platform/frontend-new
+npm run dev -- --host 0.0.0.0 --port 3001
 ```
 
-### 3. 停止集群
+## 文档清理说明
 
-```bash
-# 停止 Spark（在 Node2）
-ssh student@node2 "$SPARK_HOME/sbin/stop-all.sh"
+阶段性报告、早期实施计划和旧脚本已移入：
 
-# 停止 HDFS（在 Node1）
-$HADOOP_HOME/sbin/stop-dfs.sh
+- `docs/archive/`
+- `scripts/archive/`
 
-# 停止 Kafka（在 Node1）
-docker-compose stop
-```
-
-## 开发指南
-
-详见 `docs/vibe-context/` 目录下的文档。
-
-## 实现计划
-
-详见 `/home/student/.claude/plans/purrfect-spinning-candy.md`
-
-## 团队成员
-
-（待补充）
-
-## 许可证
-
-本项目仅用于课程作业，不得用于商业用途。
+这些文件仅用于追溯，不作为最终提交或答辩口径。

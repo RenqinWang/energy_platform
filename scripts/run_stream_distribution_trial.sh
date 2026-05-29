@@ -192,7 +192,7 @@ start_hdfs_replication_loop() {
 
 start_microbatch_loop() {
   log "Starting stream micro-batch loop with Spark master ${SPARK_MASTER}"
-  nohup setsid bash -lc "cd '${PROJECT_HOME}' && SPARK_MASTER='${SPARK_MASTER}' SPARK_DRIVER_HOST='${SPARK_DRIVER_HOST}' HDFS_REPLICATION='${HDFS_REPLICATION}' STREAM_SETREP_ENABLED='${STREAM_SETREP_ENABLED}' HDFS_LAKE_PATH='hdfs://node1:9000/lake/stream' FULL_HDFS_LAKE_PATH='hdfs://node1:9000/lake/full' HDFS_CONTROL_PATH='hdfs://node1:9000/lake/control' STREAM_MICROBATCH_INTERVAL_SECONDS='${MICROBATCH_INTERVAL_SECONDS}' ./scripts/run-stream-microbatch.sh loop" \
+  nohup setsid bash -lc "cd '${PROJECT_HOME}' && while true; do SPARK_MASTER='${SPARK_MASTER}' SPARK_DRIVER_HOST='${SPARK_DRIVER_HOST}' HDFS_REPLICATION='${HDFS_REPLICATION}' STREAM_SETREP_ENABLED='${STREAM_SETREP_ENABLED}' HDFS_LAKE_PATH='hdfs://node1:9000/lake/stream' FULL_HDFS_LAKE_PATH='hdfs://node1:9000/lake/full' HDFS_CONTROL_PATH='hdfs://node1:9000/lake/control' STREAM_MICROBATCH_INTERVAL_SECONDS='${MICROBATCH_INTERVAL_SECONDS}' ./scripts/run-stream-microbatch.sh once; echo \"=== Stream micro-batch sleeping ${MICROBATCH_INTERVAL_SECONDS}s at \$(date '+%F %T') ===\"; sleep '${MICROBATCH_INTERVAL_SECONDS}'; done" \
     > "${REPORT_DIR}/stream_microbatch_loop.log" 2>&1 &
   echo $! > /tmp/stream_microbatch_loop.pid
   log "Micro-batch PID: $(cat /tmp/stream_microbatch_loop.pid)"
@@ -260,11 +260,12 @@ wait_producer_api
 start_kafka_to_bronze
 start_hdfs_replication_loop
 sleep 20
-start_microbatch_loop
-sleep 10
 
 log "Starting producer at interval ${PRODUCER_INTERVAL_MS} ms"
 curl -fsS "${PRODUCER_URL}/producer/start?interval=${PRODUCER_INTERVAL_MS}&loop=false" >/dev/null
+sleep 60
+start_microbatch_loop
+sleep 10
 
 start_epoch="$(date +%s)"
 end_epoch="$((start_epoch + DURATION_SECONDS))"
@@ -282,6 +283,10 @@ while [ "$(date +%s)" -lt "$end_epoch" ]; do
     sleep "$sleep_for"
   fi
 done
+
+log "Stopping stream writers before final lake snapshot"
+stop_trial_processes
+sleep 10
 
 log "Collecting final lake snapshot"
 snapshot "999_final_lake" true

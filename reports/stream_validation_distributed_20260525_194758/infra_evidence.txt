@@ -1,0 +1,371 @@
+
+======================================================================
+1. Three-node deployment architecture
+======================================================================
+Node   Public IP        Private IP      Roles
+-----  ---------------  --------------  -----------------------------------------------
+Node1  115.120.208.241  192.168.0.94    Entry, HDFS NameNode/DataNode, Spark Worker,
+                                        FastAPI full/stream backend, React frontend
+Node2  1.94.113.240     192.168.1.87    Spark Master, HDFS DataNode, Spark Worker,
+                                        Kafka Broker, producer API
+Node3  123.60.106.233   192.168.1.19    HDFS DataNode, Spark Worker, Kafka Broker
+
+Core endpoints
+--------------
+HDFS NameNode:     hdfs://node1:9000
+Spark Master:      spark://192.168.1.87:7077
+Kafka Brokers:     192.168.1.87:9092, 192.168.1.19:9092
+Frontend:          http://115.120.208.241:3001
+Full backend:      http://115.120.208.241:8001
+Stream backend:    http://115.120.208.241:8002
+
+======================================================================
+1. HDFS DataNode status
+======================================================================
+
+-- Cluster health summary --
+Configured Capacity: 464641761280 (432.73 GB)
+Present Capacity: 363318071956 (338.37 GB)
+DFS Remaining: 355703066624 (331.27 GB)
+DFS Used: 7615005332 (7.09 GB)
+DFS Used%: 2.10%
+	Under replicated blocks: 0
+	Blocks with corrupt replicas: 0
+	Missing blocks: 0
+Live datanodes (3):
+
+-- Live DataNode details --
+
+Name: 192.168.0.94:9866 (node1)
+Hostname: ecs-new
+Decommission Status : Normal
+Configured Capacity: 211248537600 (196.74 GB)
+DFS Used: 2634183112 (2.45 GB)
+DFS Used%: 1.25%
+DFS Remaining%: 74.81%
+Last contact: Mon May 25 20:25:06 CST 2026
+
+Name: 192.168.1.19:9866 (node3)
+Hostname: node3
+Decommission Status : Normal
+Configured Capacity: 126696611840 (118.00 GB)
+DFS Used: 2487722188 (2.32 GB)
+DFS Used%: 1.96%
+DFS Remaining%: 78.00%
+Last contact: Mon May 25 20:25:06 CST 2026
+
+Name: 192.168.1.87:9866 (node2)
+Hostname: node2
+Decommission Status : Normal
+Configured Capacity: 126696611840 (118.00 GB)
+DFS Used: 2493100032 (2.32 GB)
+DFS Used%: 1.97%
+DFS Remaining%: 78.02%
+Last contact: Mon May 25 20:25:06 CST 2026
+
+======================================================================
+Spark standalone cluster status
+======================================================================
+
+-- Spark Master JSON --
+{
+    "url": "spark://192.168.1.87:7077",
+    "workers": [
+        {
+            "id": "worker-20260525170830-192.168.1.19-46387",
+            "host": "192.168.1.19",
+            "port": 46387,
+            "webuiaddress": "http://192.168.1.19:8081",
+            "cores": 1,
+            "coresused": 0,
+            "coresfree": 1,
+            "memory": 2048,
+            "memoryused": 0,
+            "memoryfree": 2048,
+            "resources": {},
+            "resourcesused": {},
+            "resourcesfree": {},
+            "state": "ALIVE",
+            "lastheartbeat": 1779711899388
+        },
+        {
+            "id": "worker-20260525170830-192.168.0.94-38063",
+            "host": "192.168.0.94",
+            "port": 38063,
+            "webuiaddress": "http://192.168.0.94:8081",
+            "cores": 2,
+            "coresused": 0,
+            "coresfree": 2,
+            "memory": 2048,
+            "memoryused": 0,
+            "memoryfree": 2048,
+            "resources": {},
+            "resourcesused": {},
+            "resourcesfree": {},
+            "state": "ALIVE",
+            "lastheartbeat": 1779711907523
+        },
+        {
+            "id": "worker-20260525170831-192.168.1.87-41657",
+            "host": "192.168.1.87",
+            "port": 41657,
+            "webuiaddress": "http://192.168.1.87:8081",
+            "cores": 1,
+            "coresused": 0,
+            "coresfree": 1,
+            "memory": 2048,
+            "memoryused": 0,
+            "memoryfree": 2048,
+            "resources": {},
+            "resourcesused": {},
+            "resourcesfree": {},
+            "state": "ALIVE",
+            "lastheartbeat": 1779711902268
+        }
+    ],
+    "aliveworkers": 3,
+    "cores": 4,
+    "coresused": 0,
+    "memory": 6144,
+    "memoryused": 0,
+    "resources": [
+        {},
+        {},
+        {}
+    ],
+    "resourcesused": [
+        {},
+        {},
+        {}
+    ],
+    "activeapps": [],
+    "completedapps": [
+        {
+            "id": "app-20260525170906-0000",
+            "starttime": 1779700146858,
+            "name": "RepTest",
+            "cores": 4,
+            "user": "student",
+            "memoryperexecutor": 1024,
+            "memoryperslave": 1024,
+
+======================================================================
+2. Kafka producer and Kafka-to-Bronze ingestion
+======================================================================
+
+-- Kafka producer API status --
+{
+    "running": false,
+    "sensors_count": 158,
+    "real_sensors": 158,
+    "simulated_sensors": 0,
+    "messages_sent": 166690,
+    "current_index": 1055,
+    "max_index": 40383,
+    "progress_percent": 2.61
+}
+
+-- Kafka processes on Node2 and Node3 --
+120017 Kafka
+119925 QuorumPeerMain
+146852 Jps
+66019 Kafka
+88170 Jps
+
+-- Kafka-to-Bronze process on Node1 --
+[WARN] Kafka-to-Bronze process not found by pgrep
+
+-- Kafka-to-Bronze log evidence: reports/stream_validation_distributed_20260525_194758/kafka_to_bronze_streaming.log --
+Filtered latest log lines:
+26/05/25 19:52:50 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 56116 milliseconds
+26/05/25 19:53:44 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 53211 milliseconds
+26/05/25 19:54:27 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 43668 milliseconds
+26/05/25 19:55:08 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 40918 milliseconds
+26/05/25 19:55:49 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 40385 milliseconds
+26/05/25 19:56:28 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 39765 milliseconds
+26/05/25 19:57:10 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 41346 milliseconds
+26/05/25 19:57:55 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 44891 milliseconds
+26/05/25 19:58:38 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 43782 milliseconds
+26/05/25 19:59:31 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 52908 milliseconds
+26/05/25 20:00:16 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 44359 milliseconds
+26/05/25 20:01:04 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 48355 milliseconds
+26/05/25 20:01:54 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 49862 milliseconds
+26/05/25 20:02:45 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 50996 milliseconds
+26/05/25 20:03:32 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 47263 milliseconds
+26/05/25 20:04:14 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 41858 milliseconds
+26/05/25 20:04:55 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 40826 milliseconds
+26/05/25 20:05:37 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 42050 milliseconds
+26/05/25 20:06:22 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 45162 milliseconds
+26/05/25 20:07:08 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 45510 milliseconds
+26/05/25 20:07:48 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 40614 milliseconds
+26/05/25 20:08:29 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 40636 milliseconds
+26/05/25 20:09:14 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 45640 milliseconds
+26/05/25 20:10:03 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 48824 milliseconds
+26/05/25 20:10:56 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 52299 milliseconds
+26/05/25 20:11:45 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 49025 milliseconds
+26/05/25 20:12:35 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 50487 milliseconds
+26/05/25 20:13:22 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 47288 milliseconds
+26/05/25 20:14:03 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 40637 milliseconds
+26/05/25 20:14:45 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 42081 milliseconds
+26/05/25 20:15:26 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 40681 milliseconds
+26/05/25 20:16:07 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 41064 milliseconds
+26/05/25 20:16:48 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 41446 milliseconds
+26/05/25 20:17:28 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 39534 milliseconds
+26/05/25 20:18:10 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 42368 milliseconds
+26/05/25 20:18:57 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 46389 milliseconds
+26/05/25 20:19:42 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 45446 milliseconds
+26/05/25 20:20:36 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 54281 milliseconds
+26/05/25 20:21:25 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 48665 milliseconds
+26/05/25 20:22:10 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 45208 milliseconds
+
+Raw tail:
+26/05/25 20:07:48 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 40614 milliseconds
+26/05/25 20:08:29 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 40636 milliseconds
+26/05/25 20:09:14 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 45640 milliseconds
+26/05/25 20:10:03 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 48824 milliseconds
+26/05/25 20:10:56 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 52299 milliseconds
+26/05/25 20:11:45 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 49025 milliseconds
+26/05/25 20:12:35 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 50487 milliseconds
+26/05/25 20:13:22 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 47288 milliseconds
+26/05/25 20:14:03 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 40637 milliseconds
+26/05/25 20:14:45 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 42081 milliseconds
+26/05/25 20:15:26 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 40681 milliseconds
+26/05/25 20:16:07 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 41064 milliseconds
+26/05/25 20:16:48 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 41446 milliseconds
+26/05/25 20:17:28 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 39534 milliseconds
+26/05/25 20:18:10 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 42368 milliseconds
+26/05/25 20:18:57 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 46389 milliseconds
+26/05/25 20:19:42 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 45446 milliseconds
+26/05/25 20:20:36 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 54281 milliseconds
+26/05/25 20:21:25 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 48665 milliseconds
+26/05/25 20:22:10 WARN ProcessingTimeExecutor: Current batch is falling behind. The trigger interval is 10000 milliseconds, but spent 45208 milliseconds
+
+-- Stream micro-batch log evidence: reports/stream_validation_distributed_20260525_194758/stream_microbatch_loop.log --
+26/05/25 20:21:04 WARN Utils: Your hostname, ecs-new resolves to a loopback address: 127.0.1.1; using 192.168.0.94 instead (on interface eth0)
+26/05/25 20:21:04 WARN Utils: Set SPARK_LOCAL_IP if you need to bind to another address
+26/05/25 20:21:04 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+26/05/25 20:21:06 WARN Utils: Service 'SparkUI' could not bind on port 4040. Attempting port 4041.
+26/05/25 20:21:06 WARN Utils: Service 'SparkUI' could not bind on port 4041. Attempting port 4042.
+26/05/25 20:21:16 WARN SparkStringUtils: Truncated the string representation of a plan since it was too large. This behavior can be adjusted by setting 'spark.sql.debug.maxToStringFields'.
+Writing unified hourly table: hdfs://node1:9000/lake/stream/gold/gold_system_supply_hourly
+daily report summary:
+weekly report summary:
+monthly report summary:
+Unified system Gold generation completed
+
+======================================================================
+3. HDFS Delta Lake layer paths
+======================================================================
+
+-- Lake root --
+Found 6 items
+drwxr-xr-x   - student supergroup          0 2026-05-22 21:00 hdfs://node1:9000/lake/bronze
+drwxr-xr-x   - student supergroup          0 2026-05-25 20:19 hdfs://node1:9000/lake/control
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:27 hdfs://node1:9000/lake/full
+drwxr-xr-x   - student supergroup          0 2026-05-24 12:20 hdfs://node1:9000/lake/gold
+drwxr-xr-x   - student supergroup          0 2026-05-21 16:03 hdfs://node1:9000/lake/silver
+drwxr-xr-x   - student supergroup          0 2026-05-25 19:48 hdfs://node1:9000/lake/stream
+
+-- hdfs://node1:9000/lake/bronze --
+Found 3 items
+drwxr-xr-x   - student supergroup          0 2026-05-24 15:46 hdfs://node1:9000/lake/bronze/bronze_price_raw
+drwxr-xr-x   - student supergroup          0 2026-05-22 21:25 hdfs://node1:9000/lake/bronze/bronze_sensor_kafka
+drwxr-xr-x   - student supergroup          0 2026-05-21 16:00 hdfs://node1:9000/lake/bronze/bronze_sensor_raw
+
+-- hdfs://node1:9000/lake/silver --
+Found 4 items
+drwxr-xr-x   - student supergroup          0 2026-05-21 16:04 hdfs://node1:9000/lake/silver/silver_chiller_status
+drwxr-xr-x   - student supergroup          0 2026-05-21 16:03 hdfs://node1:9000/lake/silver/silver_point_fact
+drwxr-xr-x   - student supergroup          0 2026-05-23 00:36 hdfs://node1:9000/lake/silver/silver_point_meta_dim
+drwxr-xr-x   - student supergroup          0 2026-05-24 15:48 hdfs://node1:9000/lake/silver/silver_price_dim
+
+-- hdfs://node1:9000/lake/gold --
+Found 15 items
+drwxr-xr-x   - student supergroup          0 2026-05-23 14:47 hdfs://node1:9000/lake/gold/gold_data_quality
+drwxr-xr-x   - student supergroup          0 2026-05-23 12:56 hdfs://node1:9000/lake/gold/gold_forecast_supply
+drwxr-xr-x   - student supergroup          0 2026-05-23 22:08 hdfs://node1:9000/lake/gold/gold_operation_advice
+drwxr-xr-x   - student supergroup          0 2026-05-21 16:05 hdfs://node1:9000/lake/gold/gold_report_daily
+drwxr-xr-x   - student supergroup          0 2026-05-23 14:34 hdfs://node1:9000/lake/gold/gold_report_monthly
+drwxr-xr-x   - student supergroup          0 2026-05-23 14:33 hdfs://node1:9000/lake/gold/gold_report_weekly
+drwxr-xr-x   - student supergroup          0 2026-05-23 14:35 hdfs://node1:9000/lake/gold/gold_revenue_forecast
+drwxr-xr-x   - student supergroup          0 2026-05-21 16:04 hdfs://node1:9000/lake/gold/gold_supply_curve_hourly
+drwxr-xr-x   - student supergroup          0 2026-05-24 12:41 hdfs://node1:9000/lake/gold/gold_system_forecast_metrics
+drwxr-xr-x   - student supergroup          0 2026-05-24 11:40 hdfs://node1:9000/lake/gold/gold_system_forecast_supply
+drwxr-xr-x   - student supergroup          0 2026-05-24 11:38 hdfs://node1:9000/lake/gold/gold_system_report_daily
+drwxr-xr-x   - student supergroup          0 2026-05-24 11:40 hdfs://node1:9000/lake/gold/gold_system_report_monthly
+drwxr-xr-x   - student supergroup          0 2026-05-24 11:40 hdfs://node1:9000/lake/gold/gold_system_report_weekly
+drwxr-xr-x   - student supergroup          0 2026-05-24 11:40 hdfs://node1:9000/lake/gold/gold_system_revenue_forecast
+drwxr-xr-x   - student supergroup          0 2026-05-24 11:38 hdfs://node1:9000/lake/gold/gold_system_supply_hourly
+
+-- hdfs://node1:9000/lake/full --
+Found 3 items
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:24 hdfs://node1:9000/lake/full/bronze
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:30 hdfs://node1:9000/lake/full/gold
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:27 hdfs://node1:9000/lake/full/silver
+
+-- hdfs://node1:9000/lake/full/silver --
+Found 4 items
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:26 hdfs://node1:9000/lake/full/silver/silver_chiller_status
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:27 hdfs://node1:9000/lake/full/silver/silver_point_fact
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:27 hdfs://node1:9000/lake/full/silver/silver_point_meta_dim
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:27 hdfs://node1:9000/lake/full/silver/silver_price_dim
+
+-- hdfs://node1:9000/lake/full/gold --
+Found 15 items
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:28 hdfs://node1:9000/lake/full/gold/gold_data_quality
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:28 hdfs://node1:9000/lake/full/gold/gold_forecast_supply
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:28 hdfs://node1:9000/lake/full/gold/gold_operation_advice
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:28 hdfs://node1:9000/lake/full/gold/gold_report_daily
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:28 hdfs://node1:9000/lake/full/gold/gold_report_monthly
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:28 hdfs://node1:9000/lake/full/gold/gold_report_weekly
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:28 hdfs://node1:9000/lake/full/gold/gold_revenue_forecast
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:29 hdfs://node1:9000/lake/full/gold/gold_supply_curve_hourly
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:29 hdfs://node1:9000/lake/full/gold/gold_system_forecast_metrics
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:29 hdfs://node1:9000/lake/full/gold/gold_system_forecast_supply
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:29 hdfs://node1:9000/lake/full/gold/gold_system_report_daily
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:30 hdfs://node1:9000/lake/full/gold/gold_system_report_monthly
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:30 hdfs://node1:9000/lake/full/gold/gold_system_report_weekly
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:30 hdfs://node1:9000/lake/full/gold/gold_system_revenue_forecast
+drwxr-xr-x   - student supergroup          0 2026-05-24 16:30 hdfs://node1:9000/lake/full/gold/gold_system_supply_hourly
+
+-- hdfs://node1:9000/lake/stream --
+Found 3 items
+drwxr-xr-x   - student supergroup          0 2026-05-25 19:49 hdfs://node1:9000/lake/stream/bronze
+drwxr-xr-x   - student supergroup          0 2026-05-25 19:53 hdfs://node1:9000/lake/stream/gold
+drwxr-xr-x   - student supergroup          0 2026-05-25 19:51 hdfs://node1:9000/lake/stream/silver
+
+-- hdfs://node1:9000/lake/stream/bronze --
+Found 1 items
+drwxr-xr-x   - student supergroup          0 2026-05-25 20:16 hdfs://node1:9000/lake/stream/bronze/bronze_streaming
+
+-- hdfs://node1:9000/lake/stream/silver --
+Found 4 items
+drwxr-xr-x   - student supergroup          0 2026-05-25 20:20 hdfs://node1:9000/lake/stream/silver/silver_chiller_status
+drwxr-xr-x   - student supergroup          0 2026-05-25 20:19 hdfs://node1:9000/lake/stream/silver/silver_point_fact
+drwxr-xr-x   - student supergroup          0 2026-05-25 19:48 hdfs://node1:9000/lake/stream/silver/silver_point_meta_dim
+drwxr-xr-x   - student supergroup          0 2026-05-25 19:48 hdfs://node1:9000/lake/stream/silver/silver_price_dim
+
+-- hdfs://node1:9000/lake/stream/gold --
+Found 7 items
+drwxr-xr-x   - student supergroup          0 2026-05-25 20:20 hdfs://node1:9000/lake/stream/gold/gold_supply_curve_hourly
+drwxr-xr-x   - student supergroup          0 2026-05-25 19:53 hdfs://node1:9000/lake/stream/gold/gold_system_forecast_supply
+drwxr-xr-x   - student supergroup          0 2026-05-25 19:53 hdfs://node1:9000/lake/stream/gold/gold_system_report_daily
+drwxr-xr-x   - student supergroup          0 2026-05-25 19:53 hdfs://node1:9000/lake/stream/gold/gold_system_report_monthly
+drwxr-xr-x   - student supergroup          0 2026-05-25 19:53 hdfs://node1:9000/lake/stream/gold/gold_system_report_weekly
+drwxr-xr-x   - student supergroup          0 2026-05-25 19:53 hdfs://node1:9000/lake/stream/gold/gold_system_revenue_forecast
+drwxr-xr-x   - student supergroup          0 2026-05-25 19:53 hdfs://node1:9000/lake/stream/gold/gold_system_supply_hourly
+
+-- hdfs://node1:9000/lake/control --
+Found 2 items
+drwxr-xr-x   - student supergroup          0 2026-05-25 20:19 hdfs://node1:9000/lake/control/etl_watermark
+drwxr-xr-x   - student supergroup          0 2026-05-25 20:19 hdfs://node1:9000/lake/control/stream_last_batch_point_fact
+
+-- Delta table markers (_delta_log) --
+[OK]    hdfs://node1:9000/lake/stream/bronze/bronze_streaming
+[OK]    hdfs://node1:9000/lake/stream/silver/silver_point_fact
+[OK]    hdfs://node1:9000/lake/stream/gold/gold_system_supply_hourly
+[OK]    hdfs://node1:9000/lake/full/silver/silver_point_fact
+[OK]    hdfs://node1:9000/lake/full/gold/gold_system_supply_hourly
+[OK]    hdfs://node1:9000/lake/full/gold/gold_system_report_daily
+[OK]    hdfs://node1:9000/lake/full/gold/gold_system_forecast_supply
+[OK]    hdfs://node1:9000/lake/full/gold/gold_system_revenue_forecast

@@ -32,7 +32,7 @@
 | 任务四：系统级展示 | 某系统全部设备状态和综合报表 | `/system` 页面，覆盖冷机、热机、三联供 | 已实现 |
 | 任务四：预测和建议 | 展示预测结果并给出运行建议 | `/forecast` 页面和 `gold_operation_advice` | 已实现 |
 | 任务四：收益预测 | 结合供能预测和能源价格计算收益 | `/revenue` 页面和 `gold_system_revenue_forecast` | 已实现 |
-| 任务五：分布式验证 | 性能、扩展性或容错性三选一 | 已有性能对比报告；建议补真实 Spark standalone 对比增强说服力 | 基本完成 |
+| 任务五：分布式验证 | 性能、扩展性或容错性三选一 | 已完成单机流式链路与 Spark/Kafka/HDFS 分布式链路性能对比，见 `docs/TASK5_DISTRIBUTED_VALIDATION.md` | 已实现 |
 
 ## 3. 部署架构
 
@@ -491,38 +491,29 @@ http://115.120.208.241:3001/
 当前已完成性能对比验证，见：
 
 ```text
-docs/distributed_effectiveness_validation.md
+docs/TASK5_DISTRIBUTED_VALIDATION.md
 ```
 
-现有报告比较了：
+现有报告比较了两种流式数据湖运行模式：
 
-- `local[1]` 单线程基线。
-- `local[*]` 并行 Spark 执行。
+- 单机模式：Spark `local[*]`、单 Kafka Broker、HDFS 副本数 1。
+- 分布式模式：Spark Standalone `spark://192.168.1.87:7077`、双 Kafka Broker、HDFS 副本数 3。
 
 验证任务包括：
 
-- 综合报表生成。
-- 历史窗口查询。
-- 预测特征计算。
+- Kafka 生产者模拟流式推送。
+- Spark Structured Streaming 写入 stream Bronze。
+- 5 分钟微批增量生成 Silver 明细层。
+- Gold 小时表、日/周/月报表、预测表、收益预测表刷新。
+- 三节点 CPU、内存、Kafka offset、Spark 微批耗时和数据湖行数统计。
 
-已有结果显示并行执行相对单线程有明显加速。但由于作业重点强调分布式价值，答辩前建议补充一次真实 Spark Standalone 集群模式：
+正式结果摘要：
 
-```bash
-/home/student/spark-3.5.7-bin-hadoop3/bin/spark-submit \
-  --master spark://node2:7077 \
-  scripts/distributed_effectiveness_benchmark.py \
-  --scale-factor 20 \
-  --trials 2 \
-  --shuffle-partitions 24
-```
-
-如果 Spark Standalone Worker 未稳定运行，则答辩口径应明确：
-
-```text
-HDFS 和 Kafka 已采用真实多节点分布式部署；
-现有计算验证使用同一 HDFS 数据源上的 Spark 单线程与本机多核并行对比；
-后续可直接将 benchmark master 参数切换到 spark://node2:7077 复测。
-```
+- 单机正式报告目录：`reports/stream_validation_single_20260525_160213`。
+- 分布式正式报告目录：`reports/stream_validation_distributed_20260525_194758`。
+- 分布式模式处理了约 1.37 倍 Silver 数据和 Gold 小时数据。
+- 分布式模式下 Node-2、Node-3 CPU 平均使用率明显上升，说明 Kafka/Spark/HDFS 任务实际分布到集群节点。
+- 两组生产间隔分别为 2000 ms 和 1800 ms，不是严格同参；分布式输入压力更高，因此结论按保守口径解释。
 
 ## 14. 演示流程建议
 
@@ -537,7 +528,7 @@ HDFS 和 Kafka 已采用真实多节点分布式部署；
 7. 打开 `/reports`，展示日/周/月综合报表和峰谷指标。
 8. 打开 `/forecast`，解释随机森林预测、特征和模型指标。
 9. 打开 `/revenue`，解释价格来源和收益计算口径。
-10. 展示 `distributed_effectiveness_validation.md` 或 benchmark 结果。
+10. 展示 `TASK5_DISTRIBUTED_VALIDATION.md` 和 `reports/task5` 中的单机/分布式验证结果。
 
 ## 15. 常用启动命令
 
@@ -575,7 +566,7 @@ npm run dev -- --host 0.0.0.0 --port 3001
 | 价格数据是 2026 年当前价格 | 与 2018 负荷时间不重合 | 收益预测表示当前价格下的经济性复盘/预测 |
 | 冷机功率部分为估算 | 原始点位缺少明确实测功率 | 使用水侧冷量和固定 COP 估算，并保留 `metric_quality` |
 | 热机/三联供部分字段可能为空 | 原始点位不一定覆盖流量、压力等主题 | 缺失保留为空，不伪造数据；主题页应提示暂无该类点位 |
-| 分布式验证需要进一步增强 | 当前报告以 `local[1]` 和 `local[*]` 为主 | 建议补跑 `spark://node2:7077` 或说明 HDFS/Kafka 已多节点 |
+| 分布式验证同参性有限 | 单机正式测试生产间隔为 2000 ms，分布式正式测试为 1800 ms | 分布式承载了更高输入压力，按保守口径解释；若时间允许可再补严格同参测试 |
 | 微批循环可能重复启动 | 多个 loop 会导致日志交叉和并发写入 | 运行前确认只保留一个 `run-stream-microbatch.sh loop` |
 
 ## 17. 组员分工
@@ -595,10 +586,10 @@ npm run dev -- --host 0.0.0.0 --port 3001
 - 源代码：`energy-platform/`
 - 最终说明文档：`docs/FINAL_SYSTEM_DESCRIPTION.md`
 - 设计文档：`docs/第一阶段设计方案_v2.md`
-- 分布式验证报告：`docs/distributed_effectiveness_validation.md`
+- 分布式验证报告：`docs/TASK5_DISTRIBUTED_VALIDATION.md`
 - 数据完整性报告：`docs/DATA_COMPLETENESS_ANALYSIS.md`
 - 前端展示说明：`docs/frontend-data-display-guide.md`
-- Vibe coding 上下文：建议整理 `AGENT_HANDOFF.md` 和关键对话摘要。
+- Vibe coding 上下文：`final_submission/HW2-组长姓名-组长学号/vibe_coding_context/VIBE_CODING_CONTEXT.md`。
 - 演示视频：按第 14 节流程录制。
 
 ## 19. 文档版本说明
